@@ -535,6 +535,25 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
+        ///   Adds a custom .gitignore rule that will be applied to futher operations to the Index. This is in addition
+        ///   to the standard .gitignore rules that would apply as a result of the system/user/repo .gitignore
+        /// </summary>
+        /// <param name="rules">The content of a .gitignore file that will be applied.</param>
+        public void AddCustomIgnoreRules(string rules)
+        {
+            Ensure.Success(NativeMethods.git_ignore_add_rule(Handle, rules));
+        }
+
+        /// <summary>
+        ///   Resets all custom rules that were applied via calls to <see cref="Repository.AddCustomIgnoreRules"/> - note that
+        ///   this will not affect the application of the user/repo .gitignores.
+        /// </summary>
+        public void ResetAllCustomIgnoreRules()
+        {
+            Ensure.Success(NativeMethods.git_ignore_clear_internal_rules(Handle));
+        }
+
+        /// <summary>
         ///   Stores the content of the <see cref = "Repository.Index" /> as a new <see cref = "Commit" /> into the repository.
         ///   The tip of the <see cref = "Repository.Head"/> will be used as the parent of this new Commit.
         ///   Once the commit is created, the <see cref = "Repository.Head"/> will move forward to point at it.
