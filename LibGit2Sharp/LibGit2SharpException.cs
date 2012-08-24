@@ -70,6 +70,12 @@ namespace LibGit2Sharp
         {
         }
 
+        public LibGit2SharpException(GitErrorCode code, GitErrorCategory category, string message) : this(FormatMessage(message, code, category))
+        {
+            Data.Add("libgit2.code", code);
+            Data.Add("libgit2.category", category);
+        }
+
         /// <summary>
         ///   Initializes a new instance of the <see cref = "LibGit2SharpException" /> class with a serialized data.
         /// </summary>
