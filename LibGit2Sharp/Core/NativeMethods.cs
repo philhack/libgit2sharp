@@ -345,6 +345,13 @@ namespace LibGit2Sharp.Core
         public static extern int git_ignore_clear_internal_rules(RepositorySafeHandle repo);
 
         [DllImport(libgit2)]
+        public static extern int git_ignore_path_is_ignored(
+            out int ignored,
+            RepositorySafeHandle repo,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof (FilePathMarshaler))] string path);
+
+
+        [DllImport(libgit2)]
         public static extern int git_index_add(
             IndexSafeHandle index,
             [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath path,

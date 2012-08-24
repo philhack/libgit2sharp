@@ -554,6 +554,20 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
+        ///    Given a relative path, this method determines whether a path should be ignored, checking
+        ///    both the custom ignore rules as well as the "normal" .gitignores.
+        /// </summary>
+        /// <param name="relativePath">A path relative to the repository</param>
+        /// <returns>true if the path should be ignored.</returns>
+        public bool IsPathIgnored(string relativePath)
+        {
+            int ignored;
+            Ensure.Success(NativeMethods.git_ignore_path_is_ignored(out ignored, Handle, relativePath));
+
+            return (ignored != 0);
+        }
+
+        /// <summary>
         ///   Stores the content of the <see cref = "Repository.Index" /> as a new <see cref = "Commit" /> into the repository.
         ///   The tip of the <see cref = "Repository.Head"/> will be used as the parent of this new Commit.
         ///   Once the commit is created, the <see cref = "Repository.Head"/> will move forward to point at it.
