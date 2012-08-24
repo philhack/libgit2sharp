@@ -348,7 +348,7 @@ namespace LibGit2Sharp.Core
         public static extern int git_ignore_path_is_ignored(
             out int ignored,
             RepositorySafeHandle repo,
-            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof (FilePathMarshaler))] string path);
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof (Utf8Marshaler))] string path);
 
 
         [DllImport(libgit2)]
