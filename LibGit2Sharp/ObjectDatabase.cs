@@ -120,9 +120,9 @@ namespace LibGit2Sharp
 
         internal static string PrettifyMessage(string message)
         {
-            var buffer = new byte[NativeMethods.GIT_PATH_MAX];
+            var buffer = new byte[message.Length + 2];
             int res = NativeMethods.git_message_prettify(buffer, buffer.Length, message, false);
-            Ensure.Success(res);
+            Ensure.Success(res, true);
 
             return Utf8Marshaler.Utf8FromBuffer(buffer) ?? string.Empty;
         }
