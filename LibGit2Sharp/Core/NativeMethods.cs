@@ -69,6 +69,14 @@ namespace LibGit2Sharp.Core
         internal static extern GitErrorSafeHandle giterr_last();
 
         [DllImport(libgit2)]
+        internal static extern void giterr_set_str(
+            GitErrorCategory error_class,
+            string errorString);
+
+        [DllImport(libgit2)]
+        internal static extern void giterr_set_oom();
+
+        [DllImport(libgit2)]
         internal static extern int git_blob_create_fromdisk(
             ref GitOid oid,
             RepositorySafeHandle repo,
@@ -133,6 +141,13 @@ namespace LibGit2Sharp.Core
         internal static extern int git_branch_tracking(
             out ReferenceSafeHandle reference,
             ReferenceSafeHandle branch);
+
+        [DllImport(libgit2)]
+        internal static extern int git_checkout_tree(
+            RepositorySafeHandle repo,
+            GitObjectSafeHandle treeish,
+            GitCheckoutOpts opts,
+            GitIndexerStats stats);
 
         [DllImport(libgit2)]
         internal static extern IntPtr git_commit_author(GitObjectSafeHandle commit);
@@ -432,6 +447,12 @@ namespace LibGit2Sharp.Core
             IntPtr payload);
 
         [DllImport(libgit2)]
+        internal static extern int git_odb_add_backend(ObjectDatabaseSafeHandle odb, IntPtr backend, int priority);
+
+        [DllImport(libgit2)]
+        internal static extern IntPtr git_odb_backend_malloc(IntPtr backend, UIntPtr len);
+
+        [DllImport(libgit2)]
         internal static extern int git_odb_exists(ObjectDatabaseSafeHandle odb, ref GitOid id);
 
         [DllImport(libgit2)]
@@ -482,6 +503,10 @@ namespace LibGit2Sharp.Core
 
         [DllImport(libgit2)]
         internal static extern void git_reference_free(IntPtr reference);
+
+        [DllImport(libgit2)]
+        internal static extern int git_reference_is_valid_name(
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string refname);
 
         [DllImport(libgit2)]
         internal static extern int git_reference_lookup(

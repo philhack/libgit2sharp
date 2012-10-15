@@ -11,6 +11,27 @@ namespace LibGit2Sharp.Core
 {
     internal class Proxy
     {
+        #region giterr_
+
+        public static void giterr_set_str(GitErrorCategory error_class, Exception exception)
+        {
+            if (exception is OutOfMemoryException)
+            {
+                NativeMethods.giterr_set_oom();
+            }
+            else
+            {
+                NativeMethods.giterr_set_str(error_class, exception.Message);
+            }
+        }
+
+        public static void giterr_set_str(GitErrorCategory error_class, String errorString)
+        {
+            NativeMethods.giterr_set_str(error_class, errorString);
+        }
+
+        #endregion
+
         #region git_blob_
 
         public static ObjectId git_blob_create_fromchunks(RepositorySafeHandle repo, FilePath hintpath, NativeMethods.source_callback fileCallback)
@@ -140,6 +161,24 @@ namespace LibGit2Sharp.Core
                 Ensure.Success(res);
 
                 return reference;
+            }
+        }
+
+        #endregion
+
+        #region git_checkout_
+
+        public static void git_checkout_tree(
+            RepositorySafeHandle repo,
+            ObjectId treeId,
+            GitCheckoutOpts opts,
+            GitIndexerStats stats)
+        {
+            using (ThreadAffinity())
+            using (var osw = new ObjectSafeWrapper(treeId, repo))
+            {
+                int res = NativeMethods.git_checkout_tree(repo, osw.ObjectPtr, opts, stats);
+                Ensure.Success(res);
             }
         }
 
@@ -793,6 +832,26 @@ namespace LibGit2Sharp.Core
 
         #region git_odb_
 
+        public static void git_odb_add_backend(ObjectDatabaseSafeHandle odb, IntPtr backend, int priority)
+        {
+            Ensure.Success(NativeMethods.git_odb_add_backend(odb, backend, priority));
+        }
+
+        public static IntPtr git_odb_backend_malloc(IntPtr backend, UIntPtr len)
+        {
+            IntPtr toReturn = NativeMethods.git_odb_backend_malloc(backend, len);
+
+            if (IntPtr.Zero == toReturn)
+            {
+                throw new LibGit2SharpException(String.Format(CultureInfo.InvariantCulture,
+                                                              "Unable to allocate {0} bytes; out of memory",
+                                                              len.ToString()),
+                                                GitErrorCode.Error, GitErrorCategory.NoMemory);
+            }
+
+            return toReturn;
+        }
+
         public static bool git_odb_exists(ObjectDatabaseSafeHandle odb, ObjectId id)
         {
             GitOid oid = id.Oid;
@@ -861,6 +920,11 @@ namespace LibGit2Sharp.Core
         public static void git_reference_free(IntPtr reference)
         {
             NativeMethods.git_reference_free(reference);
+        }
+
+        public static bool git_reference_is_valid_name(string refname)
+        {
+            return NativeMethods.git_reference_is_valid_name(refname) != 0;
         }
 
         public static IList<string> git_reference_list(RepositorySafeHandle repo, GitReferenceType flags)
@@ -1223,7 +1287,7 @@ namespace LibGit2Sharp.Core
                 GitOid ret;
                 int res = NativeMethods.git_revwalk_next(out ret, walker);
 
-                if (res == (int)GitErrorCode.RevWalkOver)
+                if (res == (int)GitErrorCode.IterOver)
                 {
                     return null;
                 }

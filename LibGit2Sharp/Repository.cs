@@ -148,7 +148,7 @@ namespace LibGit2Sharp
             {
                 if (index == null)
                 {
-                    throw new LibGit2SharpException("Index is not available in a bare repository.");
+                    throw new BareRepositoryException("Index is not available in a bare repository.");
                 }
 
                 return index;
@@ -429,6 +429,18 @@ namespace LibGit2Sharp
             return branch;
         }
 
+        private void CheckoutTreeForce(ObjectId treeId)
+        {
+            var opts = new GitCheckoutOpts
+                           {
+                               checkout_strategy = CheckoutStrategy.GIT_CHECKOUT_CREATE_MISSING |
+                                                   CheckoutStrategy.GIT_CHECKOUT_OVERWRITE_MODIFIED |
+                                                   CheckoutStrategy.GIT_CHECKOUT_REMOVE_UNTRACKED
+                           };
+
+            Proxy.git_checkout_tree(handle, treeId, opts, null);
+        }
+
         /// <summary>
         ///   Sets the current <see cref = "Head" /> to the specified commit and optionally resets the <see cref = "Index" /> and
         ///   the content of the working tree to match.
@@ -437,11 +449,11 @@ namespace LibGit2Sharp
         /// <param name = "commitish">A revparse spec for the target commit object.</param>
         public void Reset(ResetOptions resetOptions, string commitish = "HEAD")
         {
-            Ensure.ArgumentNotNullOrEmptyString(commitish, "commitOrBranchSpec");
+            Ensure.ArgumentNotNullOrEmptyString(commitish, "commitish");
 
             if (resetOptions.Has(ResetOptions.Mixed) && Info.IsBare)
             {
-                throw new LibGit2SharpException("Mixed reset is not allowed in a bare repository");
+                throw new BareRepositoryException("Mixed reset is not allowed in a bare repository");
             }
 
             Commit commit = LookupCommit(commitish);
@@ -463,7 +475,7 @@ namespace LibGit2Sharp
                 return;
             }
 
-            throw new NotImplementedException();
+            CheckoutTreeForce(commit.Tree.Id);
         }
 
         /// <summary>
