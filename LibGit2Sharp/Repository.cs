@@ -283,11 +283,6 @@ namespace LibGit2Sharp
             return LookupInternal(id, type, null);
         }
 
-        internal GitObject LookupTreeEntryTarget(ObjectId id, FilePath path)
-        {
-            return LookupInternal(id, GitObjectType.Any, path);
-        }
-
         internal GitObject LookupInternal(ObjectId id, GitObjectType type, FilePath knownPath)
         {
             Ensure.ArgumentNotNull(id, "id");
@@ -298,7 +293,12 @@ namespace LibGit2Sharp
             {
                 obj = Proxy.git_object_lookup(handle, id, type);
 
-                return obj == null ? null : GitObject.BuildFromPtr(obj, id, this, knownPath);
+                if (obj == null)
+                {
+                    return null;
+                }
+
+                return GitObject.BuildFrom(this, id, Proxy.git_object_type(obj), knownPath);
             }
             finally
             {
@@ -350,12 +350,14 @@ namespace LibGit2Sharp
                     return null;
                 }
 
-                if (type != GitObjectType.Any && Proxy.git_object_type(sh) != type)
+                GitObjectType objType = Proxy.git_object_type(sh);
+
+                if (type != GitObjectType.Any && objType != type)
                 {
                     return null;
                 }
 
-                obj = GitObject.BuildFromPtr(sh, GitObject.ObjectIdOf(sh), this, PathFromRevparseSpec(objectish));
+                obj = GitObject.BuildFrom(this, Proxy.git_object_id(sh), objType, PathFromRevparseSpec(objectish));
             }
 
             if (lookUpOptions.Has(LookUpOptions.DereferenceResultToCommit))
@@ -429,18 +431,6 @@ namespace LibGit2Sharp
             return branch;
         }
 
-        private void CheckoutTreeForce(ObjectId treeId)
-        {
-            var opts = new GitCheckoutOpts
-                           {
-                               checkout_strategy = CheckoutStrategy.GIT_CHECKOUT_CREATE_MISSING |
-                                                   CheckoutStrategy.GIT_CHECKOUT_OVERWRITE_MODIFIED |
-                                                   CheckoutStrategy.GIT_CHECKOUT_REMOVE_UNTRACKED
-                           };
-
-            Proxy.git_checkout_tree(handle, treeId, opts, null);
-        }
-
         /// <summary>
         ///   Sets the current <see cref = "Head" /> to the specified commit and optionally resets the <see cref = "Index" /> and
         ///   the content of the working tree to match.
@@ -451,31 +441,9 @@ namespace LibGit2Sharp
         {
             Ensure.ArgumentNotNullOrEmptyString(commitish, "commitish");
 
-            if (resetOptions.Has(ResetOptions.Mixed) && Info.IsBare)
-            {
-                throw new BareRepositoryException("Mixed reset is not allowed in a bare repository");
-            }
+            GitObject obj = Lookup(commitish, GitObjectType.Any, LookUpOptions.ThrowWhenNoGitObjectHasBeenFound);
 
-            Commit commit = LookupCommit(commitish);
-
-            //TODO: Check for unmerged entries
-
-            string refToUpdate = Info.IsHeadDetached ? "HEAD" : Head.CanonicalName;
-            Refs.UpdateTarget(refToUpdate, commit.Sha);
-
-            if (resetOptions == ResetOptions.Soft)
-            {
-                return;
-            }
-
-            Index.ReplaceContentWithTree(commit.Tree);
-
-            if (resetOptions == ResetOptions.Mixed)
-            {
-                return;
-            }
-
-            CheckoutTreeForce(commit.Tree.Id);
+            Proxy.git_reset(handle, obj.Id, resetOptions);
         }
 
         /// <summary>
