@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Compat;
 using LibGit2Sharp.Core.Handles;
+using LibGit2Sharp.Handlers;
 
 namespace LibGit2Sharp
 {
@@ -398,37 +399,145 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
-        ///   Checkout the specified branch, reference or SHA.
+        /// Clone with specified options.
         /// </summary>
-        /// <param name = "commitOrBranchSpec">A revparse spec for the commit or branch to checkout.</param>
-        /// <returns>The new HEAD.</returns>
-        public Branch Checkout(string commitOrBranchSpec)
+        /// <param name="sourceUrl">URI for the remote repository</param>
+        /// <param name="workdirPath">Local path to clone into</param>
+        /// <param name="bare">True will result in a bare clone, false a full clone.</param>
+        /// <param name="checkout">If true, the origin's HEAD will be checked out. This only applies
+        /// to non-bare repositories.</param>
+        /// <param name="onTransferProgress">Handler for network transfer and indexing progress information</param>
+        /// <param name="onCheckoutProgress">Handler for checkout progress information</param>
+        /// <returns></returns>
+        public static Repository Clone(string sourceUrl, string workdirPath,
+            bool bare = false,
+            bool checkout = true,
+            TransferProgressHandler onTransferProgress = null,
+            CheckoutProgressHandler onCheckoutProgress = null)
         {
-            // TODO: This does not yet checkout (write) the working directory
-
-            var branch = Branches[commitOrBranchSpec];
-
-            if (branch != null)
+            GitCheckoutOpts nativeOpts = null;
+            if (checkout)
             {
-                return Checkout(branch);
+                nativeOpts = new GitCheckoutOpts
+                    {
+                        checkout_strategy = CheckoutStrategy.GIT_CHECKOUT_SAFE,
+                        ProgressCb = CheckoutCallbacks.GenerateCheckoutCallbacks(onCheckoutProgress),
+                    };
             }
 
-            var commitId = LookupCommit(commitOrBranchSpec).Id;
-            Refs.UpdateTarget("HEAD", commitId.Sha);
-            return Head;
+            NativeMethods.git_transfer_progress_callback cb =
+                TransferCallbacks.GenerateCallback(onTransferProgress);
+
+            RepositorySafeHandle repo = bare
+                                            ? Proxy.git_clone_bare(sourceUrl, workdirPath, cb)
+                                            : Proxy.git_clone(sourceUrl, workdirPath, cb, nativeOpts);
+            repo.SafeDispose();
+
+            return new Repository(workdirPath);
         }
 
         /// <summary>
-        ///   Checkout the specified branch.
+        ///   Checkout the specified <see cref = "Branch" />, reference or SHA.
         /// </summary>
-        /// <param name="branch">The branch to checkout.</param>
-        /// <returns>The branch.</returns>
+        /// <param name = "commitOrBranchSpec">A revparse spec for the commit or branch to checkout.</param>
+        /// <returns>The <see cref = "Branch" /> that was checked out.</returns>
+        public Branch Checkout(string commitOrBranchSpec)
+        {
+            return Checkout(commitOrBranchSpec, CheckoutOptions.None, null);
+        }
+
+        /// <summary>
+        ///   Checkout the specified <see cref = "Branch" />, reference or SHA.
+        /// </summary>
+        /// <param name = "commitishOrBranchSpec">A revparse spec for the commit or branch to checkout.</param>
+        /// <param name="checkoutOptions"><see cref = "CheckoutOptions" /> controlling checkout behavior.</param>
+        /// <param name="onCheckoutProgress"><see cref = "CheckoutProgressHandler" /> that checkout progress is reported through.</param>
+        /// <returns>The <see cref = "Branch" /> that was checked out.</returns>
+        public Branch Checkout(string commitishOrBranchSpec, CheckoutOptions checkoutOptions, CheckoutProgressHandler onCheckoutProgress)
+        {
+            var branch = Branches[commitishOrBranchSpec];
+
+            if (branch != null)
+            {
+                return CheckoutInternal(branch.CanonicalName, checkoutOptions, onCheckoutProgress);
+            }
+
+            var commitId = LookupCommit(commitishOrBranchSpec).Id;
+            return CheckoutInternal(commitId.Sha, checkoutOptions, onCheckoutProgress);
+        }
+
+        /// <summary>
+        ///   Checkout the specified <see cref = "Branch" />.
+        /// </summary>
+        /// <param name="branch">The <see cref = "Branch" /> to check out.</param>
+        /// <returns>The <see cref = "Branch" /> that was checked out.</returns>
         public Branch Checkout(Branch branch)
+        {
+            return Checkout(branch, CheckoutOptions.None, null);
+        }
+
+        /// <summary>
+        ///   Checkout the specified <see cref = "Branch" />.
+        /// </summary>
+        /// <param name="branch">The <see cref = "Branch" /> to check out. </param>
+        /// <param name="checkoutOptions"><see cref = "CheckoutOptions" /> controlling checkout behavior.</param>
+        /// <param name="onCheckoutProgress"><see cref = "CheckoutProgressHandler" /> that checkout progress is reported through.</param>
+        /// <returns>The <see cref = "Branch" /> that was checked out.</returns>
+        public Branch Checkout(Branch branch, CheckoutOptions checkoutOptions, CheckoutProgressHandler onCheckoutProgress)
         {
             Ensure.ArgumentNotNull(branch, "branch");
 
-            Refs.UpdateTarget("HEAD", branch.CanonicalName);
-            return branch;
+            return CheckoutInternal(branch.CanonicalName, checkoutOptions, onCheckoutProgress);
+        }
+
+        /// <summary>
+        ///   Internal implementation of Checkout that expects the ID of the checkout target
+        ///   to already be in the form of a canonical branch name or a commit ID.
+        /// </summary>
+        /// <param name="commitIdOrCanonicalBranchName">Commit ID or canonical branch name.</param>
+        /// <param name="checkoutOptions"><see cref = "CheckoutOptions" /> controlling checkout behavior.</param>
+        /// <param name="onCheckoutProgress"><see cref = "CheckoutProgressHandler" /> that checkout progress is reported through.</param>
+        /// <returns>The <see cref = "Branch" /> that was checked out.</returns>
+        internal Branch CheckoutInternal(string commitIdOrCanonicalBranchName, CheckoutOptions checkoutOptions, CheckoutProgressHandler onCheckoutProgress)
+        {
+            if (Info.IsBare)
+            {
+                throw new InvalidOperationException("Checkout is not allowed in a bare repository.");
+            }
+
+            // Unless the Force option is specified,
+            // check if the current index / working tree is in a state
+            // where we can checkout a new branch.
+            if ((checkoutOptions & CheckoutOptions.Force) != CheckoutOptions.Force)
+            {
+                RepositoryStatus repositoryStatus = Index.RetrieveStatus();
+                if (repositoryStatus.IsDirty)
+                {
+                    throw new MergeConflictException(
+                        "There are changes to files in the working directory that would be overwritten by a checkout." +
+                        "Please commit your changes before you switch branches.");
+                }
+            }
+
+            // Update HEAD
+            Refs.UpdateTarget("HEAD", commitIdOrCanonicalBranchName);
+
+            // Update the working directory
+            CheckoutHeadForce(onCheckoutProgress);
+
+            return Head;
+        }
+
+        private void CheckoutHeadForce(CheckoutProgressHandler onCheckoutProgress)
+        {
+            GitCheckoutOpts options = new GitCheckoutOpts
+            {
+                checkout_strategy = CheckoutStrategy.GIT_CHECKOUT_FORCE |
+                                    CheckoutStrategy.GIT_CHECKOUT_REMOVE_UNTRACKED,
+                ProgressCb = CheckoutCallbacks.GenerateCheckoutCallbacks(onCheckoutProgress)
+            };
+
+            Proxy.git_checkout_head(this.Handle, options);
         }
 
         /// <summary>
