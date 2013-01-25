@@ -1,19 +1,23 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Compat;
 using LibGit2Sharp.Core.Handles;
+using LibGit2Sharp.Handlers;
 
 namespace LibGit2Sharp
 {
     /// <summary>
     ///   A Repository is the primary interface into a git repository
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class Repository : IRepository
     {
         private readonly BranchCollection branches;
@@ -29,6 +33,7 @@ namespace LibGit2Sharp
         private readonly NoteCollection notes;
         private readonly Lazy<ObjectDatabase> odb;
         private readonly Stack<IDisposable> toCleanup = new Stack<IDisposable>();
+        private readonly Ignore ignore;
         private static readonly Lazy<string> versionRetriever = new Lazy<string>(RetrieveVersion);
 
         /// <summary>
@@ -54,6 +59,7 @@ namespace LibGit2Sharp
             Func<Index> indexBuilder = () => new Index(this);
 
             string configurationGlobalFilePath = null;
+            string configurationXDGFilePath = null;
             string configurationSystemFilePath = null;
 
             if (options != null)
@@ -79,6 +85,7 @@ namespace LibGit2Sharp
                 }
 
                 configurationGlobalFilePath = options.GlobalConfigurationLocation;
+                configurationXDGFilePath = options.XdgConfigurationLocation;
                 configurationSystemFilePath = options.SystemConfigurationLocation;
             }
 
@@ -92,11 +99,37 @@ namespace LibGit2Sharp
             branches = new BranchCollection(this);
             tags = new TagCollection(this);
             info = new Lazy<RepositoryInformation>(() => new RepositoryInformation(this, isBare));
-            config = new Lazy<Configuration>(() => RegisterForCleanup(new Configuration(this, configurationGlobalFilePath, configurationSystemFilePath)));
+            config = new Lazy<Configuration>(() => RegisterForCleanup(new Configuration(this, configurationGlobalFilePath, configurationXDGFilePath, configurationSystemFilePath)));
             remotes = new Lazy<RemoteCollection>(() => new RemoteCollection(this));
             odb = new Lazy<ObjectDatabase>(() => new ObjectDatabase(this));
             diff = new Diff(this);
             notes = new NoteCollection(this);
+            ignore = new Ignore(this);
+
+            EagerlyLoadTheConfigIfAnyPathHaveBeenPassed(options);
+        }
+
+        private void EagerlyLoadTheConfigIfAnyPathHaveBeenPassed(RepositoryOptions options)
+        {
+            if (options == null)
+            {
+                return;
+            }
+
+            if (options.GlobalConfigurationLocation == null &&
+                options.XdgConfigurationLocation == null &&
+                options.SystemConfigurationLocation == null)
+            {
+                return;
+            }
+
+            // Dirty hack to force the eager load of the configuration
+            // without Resharper pestering about useless code
+
+            if (!Config.HasConfig(ConfigurationLevel.Local))
+            {
+                throw new InvalidOperationException("Unexpected state.");
+            }
         }
 
         /// <summary>
@@ -120,7 +153,7 @@ namespace LibGit2Sharp
         {
             get
             {
-                Reference reference = Refs["HEAD"];
+                Reference reference = Refs.Head;
 
                 if (reference is SymbolicReference)
                 {
@@ -152,6 +185,17 @@ namespace LibGit2Sharp
                 }
 
                 return index;
+            }
+        }
+
+        /// <summary>
+        ///   Manipulate the currently ignored files.
+        /// </summary>
+        public Ignore Ignore
+        {
+            get
+            {
+                return ignore;
             }
         }
 
@@ -260,15 +304,16 @@ namespace LibGit2Sharp
         /// </summary>
         /// <param name = "path">The path to the working folder when initializing a standard ".git" repository. Otherwise, when initializing a bare repository, the path to the expected location of this later.</param>
         /// <param name = "isBare">true to initialize a bare repository. False otherwise, to initialize a standard ".git" repository.</param>
+        /// <param name="options">Overrides to the way a repository is opened.</param>
         /// <returns> a new instance of the <see cref = "Repository" /> class. The client code is responsible for calling <see cref = "Dispose()" /> on this instance.</returns>
-        public static Repository Init(string path, bool isBare = false)
+        public static Repository Init(string path, bool isBare = false, RepositoryOptions options = null)
         {
             Ensure.ArgumentNotNullOrEmptyString(path, "path");
 
             using (RepositorySafeHandle repo = Proxy.git_repository_init(path, isBare))
             {
                 FilePath repoPath = Proxy.git_repository_path(repo);
-                return new Repository(repoPath.Native);
+                return new Repository(repoPath.Native, options);
             }
         }
 
@@ -342,7 +387,7 @@ namespace LibGit2Sharp
             {
                 if (sh == null)
                 {
-                    if (lookUpOptions.Has(LookUpOptions.ThrowWhenNoGitObjectHasBeenFound))
+                    if (lookUpOptions.HasFlag(LookUpOptions.ThrowWhenNoGitObjectHasBeenFound))
                     {
                         Ensure.GitObjectIsNotNull(null, objectish);
                     }
@@ -360,10 +405,10 @@ namespace LibGit2Sharp
                 obj = GitObject.BuildFrom(this, Proxy.git_object_id(sh), objType, PathFromRevparseSpec(objectish));
             }
 
-            if (lookUpOptions.Has(LookUpOptions.DereferenceResultToCommit))
+            if (lookUpOptions.HasFlag(LookUpOptions.DereferenceResultToCommit))
             {
-                return obj.DereferenceToCommit(objectish,
-                                               lookUpOptions.Has(LookUpOptions.ThrowWhenCanNotBeDereferencedToACommit));
+                return obj.DereferenceToCommit(
+                    lookUpOptions.HasFlag(LookUpOptions.ThrowWhenCanNotBeDereferencedToACommit));
             }
 
             return obj;
@@ -372,11 +417,11 @@ namespace LibGit2Sharp
         /// <summary>
         ///   Lookup a commit by its SHA or name, or throw if a commit is not found.
         /// </summary>
-        /// <param name="commitish">A revparse spec for the commit.</param>
+        /// <param name="committish">A revparse spec for the commit.</param>
         /// <returns>The commit.</returns>
-        internal Commit LookupCommit(string commitish)
+        internal Commit LookupCommit(string committish)
         {
-            return (Commit)Lookup(commitish, GitObjectType.Any, LookUpOptions.ThrowWhenNoGitObjectHasBeenFound | LookUpOptions.DereferenceResultToCommit | LookUpOptions.ThrowWhenCanNotBeDereferencedToACommit);
+            return (Commit)Lookup(committish, GitObjectType.Any, LookUpOptions.ThrowWhenNoGitObjectHasBeenFound | LookUpOptions.DereferenceResultToCommit | LookUpOptions.ThrowWhenCanNotBeDereferencedToACommit);
         }
 
         /// <summary>
@@ -398,37 +443,138 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
-        ///   Checkout the specified branch, reference or SHA.
+        /// Clone with specified options.
         /// </summary>
-        /// <param name = "commitOrBranchSpec">A revparse spec for the commit or branch to checkout.</param>
-        /// <returns>The new HEAD.</returns>
-        public Branch Checkout(string commitOrBranchSpec)
+        /// <param name="sourceUrl">URI for the remote repository</param>
+        /// <param name="workdirPath">Local path to clone into</param>
+        /// <param name="bare">True will result in a bare clone, false a full clone.</param>
+        /// <param name="checkout">If true, the origin's HEAD will be checked out. This only applies
+        /// to non-bare repositories.</param>
+        /// <param name="onTransferProgress">Handler for network transfer and indexing progress information</param>
+        /// <param name="onCheckoutProgress">Handler for checkout progress information</param>
+        /// <param name="options">Overrides to the way a repository is opened.</param>
+        /// <param name="credentials">Credentials to use for user/pass authentication</param>
+        /// <returns></returns>
+        public static Repository Clone(string sourceUrl, string workdirPath,
+            bool bare = false,
+            bool checkout = true,
+            TransferProgressHandler onTransferProgress = null,
+            CheckoutProgressHandler onCheckoutProgress = null,
+            RepositoryOptions options = null,
+            Credentials credentials = null)
         {
-            // TODO: This does not yet checkout (write) the working directory
+            var cloneOpts = new GitCloneOptions
+                {
+                    Bare = bare ? 1 : 0,
+                    TransferProgressCallback = TransferCallbacks.GenerateCallback(onTransferProgress),
+                    CheckoutOpts =
+                        {
+                            version = 1,
+                            progress_cb =
+                                CheckoutCallbacks.GenerateCheckoutCallbacks(onCheckoutProgress),
+                            checkout_strategy = checkout
+                                                    ? CheckoutStrategy.GIT_CHECKOUT_SAFE_CREATE
+                                                    : CheckoutStrategy.GIT_CHECKOUT_NONE
+                        },
+                };
 
-            var branch = Branches[commitOrBranchSpec];
+            if (credentials != null)
+            {
+                cloneOpts.CredAcquireCallback =
+                    (out IntPtr cred, IntPtr url, uint types, IntPtr payload) =>
+                    NativeMethods.git_cred_userpass_plaintext_new(out cred, credentials.Username, credentials.Password);
+            }
+
+            using(Proxy.git_clone(sourceUrl, workdirPath, cloneOpts)) {}
+            return new Repository(workdirPath, options);
+        }
+
+        /// <summary>
+        ///   Checkout the specified <see cref = "Branch" />, reference or SHA.
+        /// </summary>
+        /// <param name = "committishOrBranchSpec">A revparse spec for the commit or branch to checkout.</param>
+        /// <param name="checkoutOptions"><see cref = "CheckoutOptions" /> controlling checkout behavior.</param>
+        /// <param name="onCheckoutProgress"><see cref = "CheckoutProgressHandler" /> that checkout progress is reported through.</param>
+        /// <returns>The <see cref = "Branch" /> that was checked out.</returns>
+        public Branch Checkout(string committishOrBranchSpec, CheckoutOptions checkoutOptions, CheckoutProgressHandler onCheckoutProgress)
+        {
+            Ensure.ArgumentNotNullOrEmptyString(committishOrBranchSpec, "committishOrBranchSpec");
+
+            var branch = Branches[committishOrBranchSpec];
 
             if (branch != null)
             {
-                return Checkout(branch);
+                return Checkout(branch, checkoutOptions, onCheckoutProgress);
             }
 
-            var commitId = LookupCommit(commitOrBranchSpec).Id;
-            Refs.UpdateTarget("HEAD", commitId.Sha);
+            Commit commit = LookupCommit(committishOrBranchSpec);
+            CheckoutTree(commit.Tree, checkoutOptions, onCheckoutProgress);
+
+            // Update HEAD.
+            Refs.UpdateTarget("HEAD", commit.Id.Sha);
+
             return Head;
         }
 
         /// <summary>
-        ///   Checkout the specified branch.
+        ///   Checkout the tip commit of the specified <see cref = "Branch" /> object. If this commit is the
+        ///   current tip of the branch, will checkout the named branch. Otherwise, will checkout the tip commit
+        ///   as a detached HEAD.
         /// </summary>
-        /// <param name="branch">The branch to checkout.</param>
-        /// <returns>The branch.</returns>
-        public Branch Checkout(Branch branch)
+        /// <param name="branch">The <see cref = "Branch" /> to check out. </param>
+        /// <param name="checkoutOptions"><see cref = "CheckoutOptions" /> controlling checkout behavior.</param>
+        /// <param name="onCheckoutProgress"><see cref = "CheckoutProgressHandler" /> that checkout progress is reported through.</param>
+        /// <returns>The <see cref = "Branch" /> that was checked out.</returns>
+        public Branch Checkout(Branch branch, CheckoutOptions checkoutOptions, CheckoutProgressHandler onCheckoutProgress)
         {
             Ensure.ArgumentNotNull(branch, "branch");
 
-            Refs.UpdateTarget("HEAD", branch.CanonicalName);
-            return branch;
+            // Make sure this is not an unborn branch.
+            if (branch.Tip == null)
+            {
+                throw new OrphanedHeadException(
+                    string.Format("The tip of branch '{0}' is null. There's nothing to checkout.", branch.Name));
+            }
+
+            CheckoutTree(branch.Tip.Tree, checkoutOptions, onCheckoutProgress);
+
+            // Update HEAD.
+            if (!branch.IsRemote &&
+                string.Equals(Refs[branch.CanonicalName].TargetIdentifier, branch.Tip.Id.Sha,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                Refs.UpdateTarget("HEAD", branch.CanonicalName);
+            }
+            else
+            {
+                Refs.UpdateTarget("HEAD", branch.Tip.Id.Sha);
+            }
+
+            return Head;
+        }
+
+        /// <summary>
+        ///   Internal implementation of Checkout that expects the ID of the checkout target
+        ///   to already be in the form of a canonical branch name or a commit ID.
+        /// </summary>
+        /// <param name="tree">The <see cref="Tree"/> to checkout.</param>
+        /// <param name="checkoutOptions"><see cref = "CheckoutOptions" /> controlling checkout behavior.</param>
+        /// <param name="onCheckoutProgress"><see cref = "CheckoutProgressHandler" /> that checkout progress is reported through.</param>
+        private void CheckoutTree(Tree tree, CheckoutOptions checkoutOptions, CheckoutProgressHandler onCheckoutProgress)
+        {
+            GitCheckoutOpts options = new GitCheckoutOpts
+            {
+                version = 1,
+                checkout_strategy = CheckoutStrategy.GIT_CHECKOUT_SAFE,
+                progress_cb = CheckoutCallbacks.GenerateCheckoutCallbacks(onCheckoutProgress)
+            };
+
+            if (checkoutOptions.HasFlag(CheckoutOptions.Force))
+            {
+                options.checkout_strategy = CheckoutStrategy.GIT_CHECKOUT_FORCE;
+            }
+
+            Proxy.git_checkout_tree(this.Handle, tree.Id, ref options);
         }
 
         /// <summary>
@@ -436,31 +582,29 @@ namespace LibGit2Sharp
         ///   the content of the working tree to match.
         /// </summary>
         /// <param name = "resetOptions">Flavor of reset operation to perform.</param>
-        /// <param name = "commitish">A revparse spec for the target commit object.</param>
-        public void Reset(ResetOptions resetOptions, string commitish = "HEAD")
+        /// <param name = "commit">The target commit object.</param>
+        public void Reset(ResetOptions resetOptions, Commit commit)
         {
-            Ensure.ArgumentNotNullOrEmptyString(commitish, "commitish");
+            Ensure.ArgumentNotNull(commit, "commit");
 
-            GitObject obj = Lookup(commitish, GitObjectType.Any, LookUpOptions.ThrowWhenNoGitObjectHasBeenFound);
-
-            Proxy.git_reset(handle, obj.Id, resetOptions);
+            Proxy.git_reset(handle, commit.Id, resetOptions);
         }
 
         /// <summary>
-        ///   Replaces entries in the <see cref="Index"/> with entries from the specified commit.
+        ///   Replaces entries in the <see cref="Repository.Index"/> with entries from the specified commit.
         /// </summary>
-        /// <param name = "commitish">A revparse spec for the target commit object.</param>
+        /// <param name = "commit">The target commit object.</param>
         /// <param name = "paths">The list of paths (either files or directories) that should be considered.</param>
-        public void Reset(string commitish = "HEAD", IEnumerable<string> paths = null)
+        public void Reset(Commit commit, IEnumerable<string> paths = null)
         {
             if (Info.IsBare)
             {
-                throw new LibGit2SharpException("Reset is not allowed in a bare repository");
+                throw new BareRepositoryException("Reset is not allowed in a bare repository");
             }
 
-            Commit commit = LookupCommit(commitish);
-            TreeChanges changes = Diff.Compare(commit.Tree, DiffTarget.Index, paths);
+            Ensure.ArgumentNotNull(commit, "commit");
 
+            TreeChanges changes = Diff.Compare(commit.Tree, DiffTargets.Index, paths);
             Index.Reset(changes);
         }
 
@@ -504,6 +648,20 @@ namespace LibGit2Sharp
             return new[] { Head.Tip };
         }
 
+        /// <summary>
+        /// Clean the working tree by removing files that are not under version control.
+        /// </summary>
+        public virtual void RemoveUntrackedFiles()
+        {
+            var options = new GitCheckoutOpts
+            {
+                version = 1,
+                checkout_strategy = CheckoutStrategy.GIT_CHECKOUT_REMOVE_UNTRACKED
+                                     | CheckoutStrategy.GIT_CHECKOUT_ALLOW_CONFLICTS,
+            };
+
+            Proxy.git_checkout_index(Handle, new NullGitObjectSafeHandle(), ref options);
+        }
 
         internal T RegisterForCleanup<T>(T disposable) where T : IDisposable
         {
@@ -548,6 +706,17 @@ namespace LibGit2Sharp
             using (var sr = new StreamReader(assembly.GetManifestResourceStream(name)))
             {
                 return sr.ReadLine();
+            }
+        }
+
+        private string DebuggerDisplay
+        {
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "{0} = \"{1}\"",
+                    Info.IsBare ? "Gitdir" : "Workdir",
+                    Info.IsBare ? Info.Path : Info.WorkingDirectory);
             }
         }
     }

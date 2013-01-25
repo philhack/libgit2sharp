@@ -25,15 +25,20 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanCorrectlyCountCommitsWhenSwitchingToAnotherBranch()
         {
-            using (var repo = new Repository(BareTestRepoPath))
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
+            using (var repo = new Repository(path.RepositoryPath))
             {
+                // Hard reset and then remove untracked files
+                repo.Reset(ResetOptions.Hard);
+                repo.RemoveUntrackedFiles();
+
                 repo.Checkout("test");
                 Assert.Equal(2, repo.Commits.Count());
                 Assert.Equal("e90810b8df3e80c413d903f631643c716887138d", repo.Commits.First().Id.Sha);
 
                 repo.Checkout("master");
-                Assert.Equal(7, repo.Commits.Count());
-                Assert.Equal("4c062a6361ae6959e06292c1fa5e2822d9c96345", repo.Commits.First().Id.Sha);
+                Assert.Equal(9, repo.Commits.Count());
+                Assert.Equal("32eab9cb1f450b5fe7ab663462b77d7f4b703344", repo.Commits.First().Id.Sha);
             }
         }
 
@@ -221,9 +226,13 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanEnumerateFromDetachedHead()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo();
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
             using (var repoClone = new Repository(path.RepositoryPath))
             {
+                // Hard reset and then remove untracked files
+                repoClone.Reset(ResetOptions.Hard);
+                repoClone.RemoveUntrackedFiles();
+
                 string headSha = repoClone.Head.Tip.Sha;
                 repoClone.Checkout(headSha);
 
@@ -231,7 +240,8 @@ namespace LibGit2Sharp.Tests
                     repo => new Filter { Since = repo.Head },
                     new[]
                         {
-                            "4c062a6", "be3563a", "c47800c", "9fd738e",
+                            "32eab9c", "592d3c8", "4c062a6",
+                            "be3563a", "c47800c", "9fd738e",
                             "4a202b3", "5b5b025", "8496071",
                         });
             }
@@ -348,11 +358,28 @@ namespace LibGit2Sharp.Tests
         }
 
         [Fact]
-        public void CanEnumerateCommitsFromATagWhichDoesNotPointAtACommit()
+        public void CanEnumerateCommitsFromATagWhichPointsToABlob()
         {
             AssertEnumerationOfCommits(
                 repo => new Filter { Since = repo.Tags["point_to_blob"] },
                 new string[] { });
+        }
+
+        [Fact]
+        public void CanEnumerateCommitsFromATagWhichPointsToATree()
+        {
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(BareTestRepoPath);
+
+            using (var repo = new Repository(path.RepositoryPath))
+            {
+                string headTreeSha = repo.Head.Tip.Tree.Sha;
+
+                Tag tag = repo.ApplyTag("point_to_tree", headTreeSha);
+
+                AssertEnumerationOfCommitsInRepo(repo,
+                    r => new Filter { Since = tag },
+                    new string[] { });
+            }
         }
 
         private static void AssertEnumerationOfCommits(Func<Repository, Filter> filterBuilder, IEnumerable<string> abbrevIds)
@@ -473,7 +500,8 @@ namespace LibGit2Sharp.Tests
                 Assert.True(Path.IsPathRooted(dir));
                 Assert.True(Directory.Exists(dir));
 
-                InconclusiveIf(() => !repo.Config.HasGlobalConfig, "No Git global configuration available");
+                InconclusiveIf(() => !repo.Config.HasConfig(ConfigurationLevel.Global),
+                    "No Git global configuration available");
 
                 const string relativeFilepath = "new.txt";
                 string filePath = Path.Combine(repo.Info.WorkingDirectory, relativeFilepath);
@@ -490,12 +518,12 @@ namespace LibGit2Sharp.Tests
                 AssertBlobContent(repo.Head[relativeFilepath], "nulltoken\n");
                 AssertBlobContent(commit[relativeFilepath], "nulltoken\n");
 
-                var name = repo.Config.Get<string>("user.name", null);
-                var email = repo.Config.Get<string>("user.email", null);
-                Assert.Equal(commit.Author.Name, name);
-                Assert.Equal(commit.Author.Email, email);
-                Assert.Equal(commit.Committer.Name, name);
-                Assert.Equal(commit.Committer.Email, email);
+                var name = repo.Config.Get<string>("user.name");
+                var email = repo.Config.Get<string>("user.email");
+                Assert.Equal(commit.Author.Name, name.Value);
+                Assert.Equal(commit.Author.Email, email.Value);
+                Assert.Equal(commit.Committer.Name, name.Value);
+                Assert.Equal(commit.Committer.Email, email.Value);
             }
         }
 

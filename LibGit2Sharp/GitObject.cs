@@ -1,12 +1,15 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Globalization;
 using LibGit2Sharp.Core;
+using LibGit2Sharp.Core.Handles;
 
 namespace LibGit2Sharp
 {
     /// <summary>
     ///   A GitObject
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public abstract class GitObject : IEquatable<GitObject>
     {
         internal static GitObjectTypeMap TypeToTypeMap =
@@ -74,6 +77,19 @@ namespace LibGit2Sharp
             }
         }
 
+        internal Commit DereferenceToCommit(bool throwsIfCanNotBeDereferencedToACommit)
+        {
+            using (GitObjectSafeHandle peeledHandle = Proxy.git_object_peel(repo.Handle, Id, GitObjectType.Commit, throwsIfCanNotBeDereferencedToACommit))
+            {
+                if (peeledHandle == null)
+                {
+                    return null;
+                }
+
+                return (Commit) BuildFrom(repo, Proxy.git_object_id(peeledHandle), GitObjectType.Commit, null);
+            }
+        }
+
         /// <summary>
         ///   Determines whether the specified <see cref = "Object" /> is equal to the current <see cref = "GitObject" />.
         /// </summary>
@@ -123,6 +139,11 @@ namespace LibGit2Sharp
         public static bool operator !=(GitObject left, GitObject right)
         {
             return !Equals(left, right);
+        }
+
+        private string DebuggerDisplay
+        {
+            get { return Id.ToString(7); }
         }
     }
 }

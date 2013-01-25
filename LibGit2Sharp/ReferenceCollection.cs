@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
@@ -10,6 +12,7 @@ namespace LibGit2Sharp
     /// <summary>
     ///   The Collection of references in a <see cref = "Repository" />
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class ReferenceCollection : IEnumerable<Reference>
     {
         internal readonly Repository repo;
@@ -210,7 +213,8 @@ namespace LibGit2Sharp
                     return Add("HEAD", target as DirectReference, true);
                 }
 
-                throw new ArgumentException(string.Format("'{0}' is not a valid target type.", typeof(T)));
+                throw new ArgumentException(string.Format(CultureInfo.InvariantCulture,
+                    "'{0}' is not a valid target type.", typeof(T)));
             }
 
             using (ReferenceSafeHandle referencePtr = RetrieveReferencePtr(reference.CanonicalName))
@@ -238,6 +242,45 @@ namespace LibGit2Sharp
 
             return Proxy.git_reference_foreach_glob(repo.Handle, pattern, GitReferenceType.ListAll, Utf8Marshaler.FromNative)
                 .OrderBy(name => name, StringComparer.Ordinal).Select(n => this[n]);
+        }
+
+        /// <summary>
+        ///   Determines if the proposed reference name is well-formed.
+        /// </summary>
+        /// <para>
+        ///   - Top-level names must contain only capital letters and underscores,
+        ///   and must begin and end with a letter. (e.g. "HEAD", "ORIG_HEAD").
+        ///
+        ///   - Names prefixed with "refs/" can be almost anything.  You must avoid
+        ///   the characters '~', '^', ':', '\\', '?', '[', and '*', and the
+        ///   sequences ".." and "@{" which have special meaning to revparse.
+        /// </para>
+        /// <param name="canonicalName">The name to be checked.</param>
+        /// <returns>true is the name is valid; false otherwise.</returns>
+        public virtual bool IsValidName(string canonicalName)
+        {
+            return Proxy.git_reference_is_valid_name(canonicalName);
+        }
+
+        /// <summary>
+        ///   Shortcut to return the HEAD reference.
+        /// </summary>
+        /// <returns>
+        ///   A <see cref="DirectReference"/> if the HEAD is detached;
+        ///   otherwise a <see cref="SymbolicReference"/>.
+        /// </returns>
+        public virtual Reference Head
+        {
+            get { return this["HEAD"]; }
+        }
+
+        private string DebuggerDisplay
+        {
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "Count = {0}", this.Count());
+            }
         }
     }
 }

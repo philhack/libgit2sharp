@@ -110,6 +110,28 @@ namespace LibGit2Sharp.Tests
             }
         }
 
+        [SkippableFact]
+        public void CanFetchIntoAnEmptyRepositoryWithCredentials()
+        {
+            InconclusiveIf(() => string.IsNullOrEmpty(Constants.PrivateRepoUrl),
+                "Populate Constants.PrivateRepo* to run this test");
+
+            string remoteName = "testRemote";
+
+            var scd = BuildSelfCleaningDirectory();
+            using (var repo = Repository.Init(scd.RootedDirectoryPath))
+            {
+                Remote remote = repo.Remotes.Add(remoteName, Constants.PrivateRepoUrl);
+
+                // Perform the actual fetch
+                remote.Fetch(credentials: new Credentials
+                                              {
+                                                  Username = Constants.PrivateRepoUsername,
+                                                  Password = Constants.PrivateRepoPassword
+                                              });
+            }
+        }
+
         [Theory]
         [InlineData("http://github.com/libgit2/TestGitRepository")]
         [InlineData("https://github.com/libgit2/TestGitRepository")]
@@ -165,10 +187,10 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(name, remote.Name);
                 Assert.Equal(url, remote.Url);
 
-                var refSpec = repo.Config.Get<string>("remote", remote.Name, "fetch", null);
+                var refSpec = repo.Config.Get<string>("remote", remote.Name, "fetch");
                 Assert.NotNull(refSpec);
 
-                Assert.Equal("+refs/heads/*:refs/remotes/upstream/*", refSpec);
+                Assert.Equal("+refs/heads/*:refs/remotes/upstream/*", refSpec.Value);
             }
         }
 
@@ -185,10 +207,10 @@ namespace LibGit2Sharp.Tests
 
                 repo.Remotes.Add(name, url, fetchRefSpec);
 
-                var refSpec = repo.Config.Get<string>("remote", name, "fetch", null);
+                var refSpec = repo.Config.Get<string>("remote", name, "fetch");
                 Assert.NotNull(refSpec);
 
-                Assert.Equal(fetchRefSpec, refSpec);
+                Assert.Equal(fetchRefSpec, refSpec.Value);
             }
         }
     }

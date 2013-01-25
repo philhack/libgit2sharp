@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Compat;
@@ -11,6 +13,7 @@ namespace LibGit2Sharp
     /// <summary>
     ///   A collection of <see cref = "Note"/> exposed in the <see cref = "Repository"/>.
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class NoteCollection : IEnumerable<Note>
     {
         private readonly Repository repo;
@@ -110,7 +113,8 @@ namespace LibGit2Sharp
 
                 string canonicalNamespace = NormalizeToCanonicalName(@namespace);
 
-                return Proxy.git_note_foreach(repo.Handle, canonicalNamespace, n => RetrieveNote(new ObjectId(n.TargetOid), canonicalNamespace));
+                return Proxy.git_note_foreach(repo.Handle, canonicalNamespace,
+                    (blobId,annotatedObjId) => RetrieveNote(new ObjectId(annotatedObjId), canonicalNamespace));
             }
         }
 
@@ -175,7 +179,7 @@ namespace LibGit2Sharp
 
             Remove(targetId, author, committer, @namespace);
 
-            Proxy.git_note_create(repo.Handle, author, committer, canonicalNamespace, targetId, message);
+            Proxy.git_note_create(repo.Handle, author, committer, canonicalNamespace, targetId, message, true);
 
             return RetrieveNote(targetId, canonicalNamespace);
         }
@@ -225,6 +229,15 @@ namespace LibGit2Sharp
         public virtual void Delete(ObjectId targetId, Signature author, Signature committer, string @namespace)
         {
             Remove(targetId, author, committer, @namespace);
+        }
+
+        private string DebuggerDisplay
+        {
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "Count = {0}", this.Count());
+            }
         }
     }
 }

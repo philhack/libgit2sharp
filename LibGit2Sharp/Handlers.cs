@@ -1,7 +1,4 @@
-﻿using System;
-using LibGit2Sharp.Core;
-
-namespace LibGit2Sharp.Handlers
+﻿namespace LibGit2Sharp.Handlers
 {
     /// <summary>
     ///   Delegate definition to handle Progress callback. 
@@ -27,13 +24,19 @@ namespace LibGit2Sharp.Handlers
     /// <summary>
     ///   Delegate definition to handle Completion callback.
     /// </summary>
-    /// <param name="RemoteCompletionType"></param>
-    /// <returns></returns>
-    public delegate int CompletionHandler(RemoteCompletionType RemoteCompletionType);
+    public delegate int CompletionHandler(RemoteCompletionType remoteCompletionType);
 
     /// <summary>
     ///   Delegate definition for transfer progress callback.
     /// </summary>
     /// <param name="progress">The <see cref = "TransferProgress" /> object containing progress information.</param>
     public delegate void TransferProgressHandler(TransferProgress progress);
+
+    /// <summary>
+    ///   Delegate definition for checkout progress callback.
+    /// </summary>
+    /// <param name="path">Path of the updated file.</param>
+    /// <param name="completedSteps">Number of completed steps.</param>
+    /// <param name="totalSteps">Total number of steps.</param>
+    public delegate void CheckoutProgressHandler(string path, int completedSteps, int totalSteps);
 }

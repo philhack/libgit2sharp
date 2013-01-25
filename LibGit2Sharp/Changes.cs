@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 
 namespace LibGit2Sharp
@@ -5,6 +7,7 @@ namespace LibGit2Sharp
     /// <summary>
     ///   Base class for changes.
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public abstract class Changes
     {
         private readonly StringBuilder patchBuilder = new StringBuilder();
@@ -36,5 +39,14 @@ namespace LibGit2Sharp
         ///   Determines if at least one side of the comparison holds binary content.
         /// </summary>
         public virtual bool IsBinaryComparison { get; protected set; }
+
+        private string DebuggerDisplay
+        {
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    @"{{+{0}, -{1}}}", LinesAdded, LinesDeleted);
+            }
+        }
     }
 }

@@ -154,7 +154,7 @@ namespace LibGit2Sharp.Tests
             Assert.False(repo.Info.IsHeadDetached);
             Assert.True(repo.Info.IsHeadOrphaned);
 
-            Reference headRef = repo.Refs["HEAD"];
+            Reference headRef = repo.Refs.Head;
             Assert.NotNull(headRef);
             Assert.Equal("refs/heads/master", headRef.TargetIdentifier);
             Assert.Null(headRef.ResolveToDirectReference());
@@ -396,7 +396,7 @@ namespace LibGit2Sharp.Tests
         {
             using (var repo = new Repository(BareTestRepoPath))
             {
-                Assert.Throws<AmbiguousException>(() => repo.Lookup("e90"));
+                Assert.Throws<AmbiguousSpecificationException>(() => repo.Lookup("e90"));
             }
         }
 
@@ -463,6 +463,18 @@ namespace LibGit2Sharp.Tests
 
                 repo.Refs.Add("HEAD", branchName, true);
                 Assert.False(repo.Info.IsHeadOrphaned);
+            }
+        }
+
+        [Fact]
+        public void QueryingTheRemoteForADetachedHeadBranchReturnsNull()
+        {
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
+            using (var repo = new Repository(path.DirectoryPath))
+            {
+                repo.Checkout(repo.Head.Tip.Sha, CheckoutOptions.Force, null);
+                Branch trackLocal = repo.Head;
+                Assert.Null(trackLocal.Remote);
             }
         }
     }

@@ -1,6 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.Linq;
 using System.Text;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
@@ -11,6 +14,7 @@ namespace LibGit2Sharp
     ///   Holds the result of a diff between two trees.
     ///   <para>Changes at the granularity of the file can be obtained through the different sub-collections <see cref="Added"/>, <see cref="Deleted"/> and <see cref="Modified"/>.</para>
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class TreeChanges : IEnumerable<TreeEntryChanges>
     {
         private readonly IDictionary<FilePath, TreeEntryChanges> changes = new Dictionary<FilePath, TreeEntryChanges>();
@@ -23,6 +27,8 @@ namespace LibGit2Sharp
         private readonly IDictionary<ChangeKind, Action<TreeChanges, TreeEntryChanges>> fileDispatcher = Build();
 
         private readonly StringBuilder fullPatchBuilder = new StringBuilder();
+        private static readonly Comparison<TreeEntryChanges> ordinalComparer =
+            (one, other) => string.CompareOrdinal(one.Path, other.Path);
 
         private static IDictionary<ChangeKind, Action<TreeChanges, TreeEntryChanges>> Build()
         {
@@ -43,11 +49,14 @@ namespace LibGit2Sharp
         internal TreeChanges(DiffListSafeHandle diff)
         {
             Proxy.git_diff_print_patch(diff, PrintCallBack);
+            added.Sort(ordinalComparer);
+            deleted.Sort(ordinalComparer);
+            modified.Sort(ordinalComparer);
         }
 
-        private int PrintCallBack(IntPtr data, GitDiffDelta delta, GitDiffRange range, GitDiffLineOrigin lineorigin, IntPtr content, uint contentlen)
+        private int PrintCallBack(GitDiffDelta delta, GitDiffRange range, GitDiffLineOrigin lineorigin, IntPtr content, UIntPtr contentlen, IntPtr payload)
         {
-            string formattedoutput = Utf8Marshaler.FromNative(content, contentlen);
+            string formattedoutput = Utf8Marshaler.FromNative(content, (int)contentlen);
 
             TreeEntryChanges currentChange = AddFileChange(delta, lineorigin);
             AddLineChange(currentChange, lineorigin);
@@ -86,6 +95,11 @@ namespace LibGit2Sharp
             var oldMode = (Mode)delta.OldFile.Mode;
             var newOid = new ObjectId(delta.NewFile.Oid);
             var oldOid = new ObjectId(delta.OldFile.Oid);
+
+            if (delta.Status == ChangeKind.Untracked)
+            {
+                delta.Status = ChangeKind.Added;
+            }
 
             var diffFile = new TreeEntryChanges(newFilePath, newMode, newOid, delta.Status, oldFilePath, oldMode, oldOid, delta.IsBinary());
 
@@ -184,6 +198,16 @@ namespace LibGit2Sharp
         public virtual string Patch
         {
             get { return fullPatchBuilder.ToString(); }
+        }
+
+        private string DebuggerDisplay
+        {
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "Added: {0}, Deleted: {1}, Modified: {2}",
+                    Added.Count(), Deleted.Count(), Modified.Count());
+            }
         }
     }
 }

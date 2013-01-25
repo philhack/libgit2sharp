@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using LibGit2Sharp.Core;
 using Xunit;
@@ -20,6 +21,7 @@ namespace LibGit2Sharp.Tests.TestHelpers
         public static string BareTestRepoPath { get; private set; }
         public static string StandardTestRepoWorkingDirPath { get; private set; }
         public static string StandardTestRepoPath { get; private set; }
+        public static string MergedTestRepoWorkingDirPath { get; private set; }
         public static DirectoryInfo ResourcesDirectory { get; private set; }
 
         public static readonly Signature DummySignature = new Signature("Author N. Ame", "him@there.com", TruncateSubSeconds(DateTimeOffset.Now));
@@ -47,11 +49,14 @@ namespace LibGit2Sharp.Tests.TestHelpers
             BareTestRepoPath = Path.Combine(ResourcesDirectory.FullName, "testrepo.git");
             StandardTestRepoWorkingDirPath = Path.Combine(ResourcesDirectory.FullName, "testrepo_wd");
             StandardTestRepoPath = Path.Combine(StandardTestRepoWorkingDirPath, ".git");
+            MergedTestRepoWorkingDirPath = Path.Combine(ResourcesDirectory.FullName, "mergedrepo_wd");
 
             // The test repo under source control has its .git folder renamed to dot_git to avoid confusing git,
             // so we need to rename it back to .git in our copy under the target folder
             string tempDotGit = Path.Combine(StandardTestRepoWorkingDirPath, "dot_git");
             Directory.Move(tempDotGit, StandardTestRepoPath);
+            tempDotGit = Path.Combine(MergedTestRepoWorkingDirPath, "dot_git");
+            Directory.Move(tempDotGit, Path.Combine(MergedTestRepoWorkingDirPath, ".git"));
         }
 
         protected void CreateCorruptedDeadBeefHead(string repoPath)
@@ -109,6 +114,47 @@ namespace LibGit2Sharp.Tests.TestHelpers
             var text = File.ReadAllText(configFilePath);
             var r = new Regex(regex, RegexOptions.Multiline).Match(text);
             Assert.True(r.Success, text);
+        }
+
+        public RepositoryOptions BuildFakeConfigs(SelfCleaningDirectory scd)
+        {
+            var options = BuildFakeRepositoryOptions(scd);
+
+            StringBuilder sb = new StringBuilder()
+                .AppendFormat("[Woot]{0}", Environment.NewLine)
+                .AppendFormat("this-rocks = global{0}", Environment.NewLine)
+                .AppendFormat("[Wow]{0}", Environment.NewLine)
+                .AppendFormat("Man-I-am-totally-global = 42{0}", Environment.NewLine);
+            File.WriteAllText(options.GlobalConfigurationLocation, sb.ToString());
+
+            sb = new StringBuilder()
+                .AppendFormat("[Woot]{0}", Environment.NewLine)
+                .AppendFormat("this-rocks = system{0}", Environment.NewLine);
+            File.WriteAllText(options.SystemConfigurationLocation, sb.ToString());
+
+            sb = new StringBuilder()
+                .AppendFormat("[Woot]{0}", Environment.NewLine)
+                .AppendFormat("this-rocks = xdg{0}", Environment.NewLine);
+            File.WriteAllText(options.XdgConfigurationLocation, sb.ToString());
+
+            return options;
+        }
+
+        private static RepositoryOptions BuildFakeRepositoryOptions(SelfCleaningDirectory scd)
+        {
+            string confs = Path.Combine(scd.DirectoryPath, "confs");
+            Directory.CreateDirectory(confs);
+
+            string globalLocation = Path.Combine(confs, "my-global-config");
+            string xdgLocation = Path.Combine(confs, "my-xdg-config");
+            string systemLocation = Path.Combine(confs, "my-system-config");
+
+            return new RepositoryOptions
+            {
+                GlobalConfigurationLocation = globalLocation,
+                XdgConfigurationLocation = xdgLocation,
+                SystemConfigurationLocation = systemLocation,
+            };
         }
     }
 }

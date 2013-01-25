@@ -19,7 +19,7 @@ namespace LibGit2Sharp
 
         private static RefState TryResolveReference(out Reference reference, ReferenceCollection refsColl, string canonicalName)
         {
-            if (!Proxy.git_reference_is_valid_name(canonicalName))
+            if (!refsColl.IsValidName(canonicalName))
             {
                 reference = null;
                 return RefState.DoesNotLookValid;
@@ -94,7 +94,9 @@ namespace LibGit2Sharp
 
             if (reference == null)
             {
-                throw new LibGit2SharpException(string.Format("Reference '{0}' doesn't exist. One cannot move a non existing reference.", currentName));
+                throw new LibGit2SharpException(
+                    string.Format(CultureInfo.InvariantCulture,
+                        "Reference '{0}' doesn't exist. One cannot move a non existing reference.", currentName));
             }
 
             return refsColl.Move(reference, newName, allowOverwrite);

@@ -193,7 +193,12 @@ namespace LibGit2Sharp.Tests
         {
             using (var repo = new Repository(StandardTestRepoWorkingDirPath))
             {
-                var expectedWdBranches = new[] { "diff-test-cases", "i-do-numbers", "master", "track-local", "origin/HEAD", "origin/br2", "origin/master", "origin/packed-test", "origin/test" };
+                var expectedWdBranches = new[]
+                                             {
+                                                 "diff-test-cases", "i-do-numbers", "logo", "master", "track-local",
+                                                 "origin/HEAD", "origin/br2", "origin/master", "origin/packed-test",
+                                                 "origin/test"
+                                             };
 
                 Assert.Equal(expectedWdBranches, repo.Branches.Select(b => b.Name).ToArray());
             }
@@ -208,6 +213,7 @@ namespace LibGit2Sharp.Tests
                                                               {
                                                                   new { Name = "diff-test-cases", Sha = "e7039e6d0e7dd4d4c1e2e8e5aa5306b2776436ca", IsRemote = false },
                                                                   new { Name = "i-do-numbers", Sha = "7252fe2da2c4dd6d85231a150d0485ec46abaa7a", IsRemote = false },
+                                                                  new { Name = "logo", Sha = "a447ba2ca8fffd46dece72f7db6faf324afb8fcd", IsRemote = false },
                                                                   new { Name = "master", Sha = "32eab9cb1f450b5fe7ab663462b77d7f4b703344", IsRemote = false },
                                                                   new { Name = "track-local", Sha = "580c2111be43802dab11328176d94c391f1deae9", IsRemote = false },
                                                                   new { Name = "origin/HEAD", Sha = "580c2111be43802dab11328176d94c391f1deae9", IsRemote = true },
@@ -420,101 +426,6 @@ namespace LibGit2Sharp.Tests
             }
         }
 
-        [Theory]
-        [InlineData("test")]
-        [InlineData("refs/heads/test")]
-        public void CanCheckoutAnExistingBranch(string name)
-        {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo();
-            using (var repo = new Repository(path.RepositoryPath))
-            {
-                Branch master = repo.Branches["master"];
-                Assert.True(master.IsCurrentRepositoryHead);
-
-                Branch branch = repo.Branches[name];
-                Assert.NotNull(branch);
-
-                Branch test = repo.Checkout(branch);
-                Assert.False(repo.Info.IsHeadDetached);
-
-                Assert.False(test.IsRemote);
-                Assert.True(test.IsCurrentRepositoryHead);
-                Assert.Equal(repo.Head, test);
-
-                Assert.False(master.IsCurrentRepositoryHead);
-            }
-        }
-
-        [Theory]
-        [InlineData("test")]
-        [InlineData("refs/heads/test")]
-        public void CanCheckoutAnExistingBranchByName(string name)
-        {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo();
-            using (var repo = new Repository(path.RepositoryPath))
-            {
-                Branch master = repo.Branches["master"];
-                Assert.True(master.IsCurrentRepositoryHead);
-
-                Branch test = repo.Checkout(name);
-                Assert.False(repo.Info.IsHeadDetached);
-
-                Assert.False(test.IsRemote);
-                Assert.True(test.IsCurrentRepositoryHead);
-                Assert.Equal(repo.Head, test);
-
-                Assert.False(master.IsCurrentRepositoryHead);
-            }
-        }
-
-        [Theory]
-        [InlineData("6dcf9bf")]
-        [InlineData("refs/tags/lw")]
-        public void CanCheckoutAnArbitraryCommit(string commitPointer)
-        {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo();
-            using (var repo = new Repository(path.RepositoryPath))
-            {
-                Branch master = repo.Branches["master"];
-                Assert.True(master.IsCurrentRepositoryHead);
-
-                Branch detachedHead = repo.Checkout(commitPointer);
-
-                Assert.True(repo.Info.IsHeadDetached);
-
-                Assert.False(detachedHead.IsRemote);
-                Assert.Equal(detachedHead.Name, detachedHead.CanonicalName);
-                Assert.Equal("(no branch)", detachedHead.CanonicalName);
-                Assert.Equal(repo.Lookup(commitPointer).Sha, detachedHead.Tip.Sha);
-
-                Assert.Equal(repo.Head, detachedHead);
-
-                Assert.False(master.IsCurrentRepositoryHead);
-                Assert.True(detachedHead.IsCurrentRepositoryHead);
-                Assert.True(repo.Head.IsCurrentRepositoryHead);
-            }
-        }
-
-        [Fact]
-        public void CheckingOutANonExistingBranchThrows()
-        {
-            using (var repo = new Repository(BareTestRepoPath))
-            {
-                Assert.Throws<LibGit2SharpException>(() => repo.Checkout("i-do-not-exist"));
-            }
-        }
-
-        [Fact]
-        public void CheckingOutABranchWithBadParamsThrows()
-        {
-            using (var repo = new Repository(BareTestRepoPath))
-            {
-                Assert.Throws<ArgumentException>(() => repo.Checkout(string.Empty));
-                Assert.Throws<ArgumentNullException>(() => repo.Checkout(default(Branch)));
-                Assert.Throws<ArgumentNullException>(() => repo.Checkout(default(string)));
-            }
-        }
-
         private void AssertRemoval(string branchName, bool isRemote, bool shouldPreviouslyAssertExistence)
         {
             TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
@@ -647,7 +558,7 @@ namespace LibGit2Sharp.Tests
         {
             using (var repo = new Repository(BareTestRepoPath))
             {
-                Assert.Throws<LibGit2SharpException>(() => repo.Branches.Move("br2", "test"));
+                Assert.Throws<NameConflictException>(() => repo.Branches.Move("br2", "test"));
             }
         }
 
@@ -673,6 +584,23 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(newBranch, newTest);
 
                 Assert.Equal(br2.Tip, newTest.Tip);
+            }
+        }
+
+        [Fact]
+        public void DetachedHeadIsNotATrackingBranch()
+        {
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
+            using (var repo = new Repository(path.DirectoryPath))
+            {
+                repo.Reset(ResetOptions.Hard);
+                repo.RemoveUntrackedFiles();
+
+                string headSha = repo.Head.Tip.Sha;
+                repo.Checkout(headSha);
+
+                Assert.False(repo.Head.IsTracking);
+                Assert.Null(repo.Head.TrackedBranch);
             }
         }
     }

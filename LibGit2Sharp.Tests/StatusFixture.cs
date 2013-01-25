@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using LibGit2Sharp.Tests.TestHelpers;
 using Xunit;
+using Xunit.Extensions;
 
 namespace LibGit2Sharp.Tests
 {
@@ -23,7 +24,7 @@ namespace LibGit2Sharp.Tests
         {
             using (var repo = new Repository(StandardTestRepoPath))
             {
-                Assert.Throws<AmbiguousException>(() => { FileStatus status = repo.Index.RetrieveStatus("1"); });
+                Assert.Throws<AmbiguousSpecificationException>(() => { FileStatus status = repo.Index.RetrieveStatus("1"); });
             }
         }
 
@@ -37,8 +38,7 @@ namespace LibGit2Sharp.Tests
 
                 RepositoryStatus status = repo.Index.RetrieveStatus();
 
-                IndexEntry indexEntry = repo.Index[file];
-                Assert.Equal(FileStatus.Staged, indexEntry.State);
+                Assert.Equal(FileStatus.Staged, status[file]);
 
                 Assert.NotNull(status);
                 Assert.Equal(6, status.Count());
@@ -54,9 +54,10 @@ namespace LibGit2Sharp.Tests
                 File.AppendAllText(Path.Combine(repo.Info.WorkingDirectory, file),
                                    "Tclem's favorite commit message: boom");
 
-                Assert.Equal(FileStatus.Staged | FileStatus.Modified, indexEntry.State);
+                Assert.Equal(FileStatus.Staged | FileStatus.Modified, repo.Index.RetrieveStatus(file));
 
                 RepositoryStatus status2 = repo.Index.RetrieveStatus();
+                Assert.Equal(FileStatus.Staged | FileStatus.Modified, status2[file]);
 
                 Assert.NotNull(status2);
                 Assert.Equal(6, status2.Count());
@@ -256,7 +257,42 @@ namespace LibGit2Sharp.Tests
                 fullFilePath = Path.Combine(repo.Info.WorkingDirectory, relativePath);
                 File.WriteAllText(fullFilePath, "Brackets all the way.");
 
-                Assert.Throws<AmbiguousException>(() => repo.Index.RetrieveStatus(relativePath));
+                Assert.Throws<AmbiguousSpecificationException>(() => repo.Index.RetrieveStatus(relativePath));
+            }
+        }
+
+        [Theory]
+        [InlineData(true, FileStatus.Unaltered, FileStatus.Unaltered)]
+        [InlineData(false, FileStatus.Missing, FileStatus.Untracked)]
+        public void RetrievingTheStatusOfAFilePathHonorsTheIgnoreCaseConfigurationSetting(
+            bool shouldIgnoreCase,
+            FileStatus expectedlowerCasedFileStatus,
+            FileStatus expectedCamelCasedFileStatus
+            )
+        {
+            SelfCleaningDirectory scd = BuildSelfCleaningDirectory();
+
+            string lowerCasedPath;
+
+            using (Repository repo = Repository.Init(scd.DirectoryPath))
+            {
+                repo.Config.Set("core.ignorecase", shouldIgnoreCase);
+
+                lowerCasedPath = Path.Combine(repo.Info.WorkingDirectory, "plop");
+
+                File.WriteAllText(lowerCasedPath, string.Empty);
+
+                repo.Index.Stage(lowerCasedPath);
+                repo.Commit("initial", DummySignature, DummySignature);
+            }
+
+            using (var repo = new Repository(scd.DirectoryPath))
+            {
+                string camelCasedPath = Path.Combine(repo.Info.WorkingDirectory, "Plop");
+                File.Move(lowerCasedPath, camelCasedPath);
+
+                Assert.Equal(expectedlowerCasedFileStatus, repo.Index.RetrieveStatus("plop"));
+                Assert.Equal(expectedCamelCasedFileStatus, repo.Index.RetrieveStatus("Plop"));
             }
         }
     }
