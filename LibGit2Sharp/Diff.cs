@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Compat;
 using LibGit2Sharp.Core.Handles;
@@ -21,6 +19,9 @@ namespace LibGit2Sharp
         private GitDiffOptions BuildOptions(DiffOptions diffOptions, IEnumerable<string> paths = null)
         {
             var options = new GitDiffOptions();
+
+            options.Flags |= GitDiffOptionFlags.GIT_DIFF_INCLUDE_TYPECHANGE;
+            options.ContextLines = 3;
 
             if (diffOptions.HasFlag(DiffOptions.IncludeUntracked))
             {
@@ -49,7 +50,7 @@ namespace LibGit2Sharp
                     throw new ArgumentException("At least one provided path is either null or empty.", "paths");
                 }
 
-                filePaths.Add(BuildRelativePathFrom(repo, path));
+                filePaths.Add(repo.BuildRelativePathFrom(path));
             }
 
             if (filePaths.Count == 0)
@@ -58,26 +59,6 @@ namespace LibGit2Sharp
             }
 
             return filePaths.ToArray();
-        }
-
-        private static string BuildRelativePathFrom(Repository repo, string path)
-        {
-            //TODO: To be removed when libgit2 natively implements this
-            if (!Path.IsPathRooted(path))
-            {
-                return path;
-            }
-
-            string normalizedPath = Path.GetFullPath(path);
-
-            if (!normalizedPath.StartsWith(repo.Info.WorkingDirectory, StringComparison.Ordinal))
-            {
-                throw new ArgumentException(string.Format(CultureInfo.InvariantCulture,
-                                                          "Unable to process file '{0}'. This absolute filepath escapes out of the working directory of the repository ('{1}').",
-                                                          normalizedPath, repo.Info.WorkingDirectory));
-            }
-
-            return normalizedPath.Substring(repo.Info.WorkingDirectory.Length);
         }
 
         /// <summary>
@@ -148,7 +129,7 @@ namespace LibGit2Sharp
         /// <param name = "diffTarget">The target to compare to.</param>
         /// <param name = "paths">The list of paths (either files or directories) that should be compared.</param>
         /// <returns>A <see cref = "TreeChanges"/> containing the changes between the <see cref="Tree"/> and the selected target.</returns>
-        [Obsolete("This method will be removed in the next release. Please use Compare(Tree, Tree, DiffTargets, IEnumerable<string>) instead.")]
+        [Obsolete("This method will be removed in the next release. Please use Compare(Tree, DiffTargets, IEnumerable<string>) instead.")]
         public virtual TreeChanges Compare(Tree oldTree, DiffTarget diffTarget, IEnumerable<string> paths = null)
         {
             DiffTargets targets;
@@ -198,12 +179,13 @@ namespace LibGit2Sharp
         ///   Show changes between the working directory and the index.
         /// </summary>
         /// <param name = "paths">The list of paths (either files or directories) that should be compared.</param>
+        /// <param name = "includeUntracked">If true, include untracked files from the working dir as additions. Otherwise ignore them.</param>
         /// <returns>A <see cref = "TreeChanges"/> containing the changes between the working directory and the index.</returns>
-        public virtual TreeChanges Compare(IEnumerable<string> paths = null)
+        public virtual TreeChanges Compare(IEnumerable<string> paths = null, bool includeUntracked = false)
         {
             var comparer = WorkdirToIndex(repo);
 
-            using (GitDiffOptions options = BuildOptions(DiffOptions.None, paths))
+            using (GitDiffOptions options = BuildOptions(includeUntracked ? DiffOptions.IncludeUntracked : DiffOptions.None, paths))
             using (DiffListSafeHandle dl = BuildDiffListFromComparer(null, comparer, options))
             {
                 return new TreeChanges(dl);

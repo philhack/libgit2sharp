@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Compat;
@@ -11,6 +13,7 @@ namespace LibGit2Sharp
     /// <summary>
     ///   A Commit
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class Commit : GitObject
     {
         private readonly GitObjectLazyGroup group;
@@ -125,6 +128,15 @@ namespace LibGit2Sharp
             return encoding ?? "UTF-8";
         }
 
+        private string DebuggerDisplay
+        {
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                                     "{0} {1}", Id.ToString(7), MessageShort);
+            }
+        }
+
         private class ParentsCollection : ICollection<Commit>
         {
             private readonly Lazy<ICollection<Commit>> _parents;
@@ -138,20 +150,19 @@ namespace LibGit2Sharp
 
             private ICollection<Commit> RetrieveParentsOfCommit(Repository repo, ObjectId commitId)
             {
-                var parents = new List<Commit>();
-
                 using (var obj = new ObjectSafeWrapper(commitId, repo.Handle))
                 {
                     int parentsCount = _count.Value;
+                    var parents = new List<Commit>(parentsCount);
 
                     for (uint i = 0; i < parentsCount; i++)
                     {
                         ObjectId parentCommitId = Proxy.git_commit_parent_oid(obj.ObjectPtr, i);
                         parents.Add(new Commit(repo, parentCommitId));
                     }
-                }
 
-                return parents;
+                    return parents;
+                }
             }
 
             public IEnumerator<Commit> GetEnumerator()

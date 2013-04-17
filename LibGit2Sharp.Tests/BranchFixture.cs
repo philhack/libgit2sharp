@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LibGit2Sharp.Tests.TestHelpers;
@@ -183,9 +184,29 @@ namespace LibGit2Sharp.Tests
         {
             using (var repo = new Repository(BareTestRepoPath))
             {
-                Assert.Equal(expectedBranches, repo.Branches.Select(b => b.Name).ToArray());
+                Assert.Equal(expectedBranches, SortedBranches(repo.Branches, b => b.Name));
 
                 Assert.Equal(5, repo.Branches.Count());
+            }
+        }
+
+        [Fact]
+        public void CanListBranchesWithRemoteAndLocalBranchWithSameShortName()
+        {
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
+
+            using (var repo = new Repository(path.RepositoryPath))
+            {
+                // Create a local branch with the same short name as a remote branch.
+                repo.Branches.Add("origin/master", repo.Branches["origin/test"].Tip);
+
+                var expectedWdBranches = new[]
+                                             {
+                                                 "diff-test-cases", "i-do-numbers", "logo", "master", "origin/master", "track-local",
+                                             };
+
+                Assert.Equal(expectedWdBranches,
+                             SortedBranches(repo.Branches.Where(b => !b.IsRemote), b => b.Name));
             }
         }
 
@@ -201,7 +222,7 @@ namespace LibGit2Sharp.Tests
                                                  "origin/test"
                                              };
 
-                Assert.Equal(expectedWdBranches, repo.Branches.Select(b => b.Name).ToArray());
+                Assert.Equal(expectedWdBranches, SortedBranches(repo.Branches, b => b.Name));
             }
         }
 
@@ -223,7 +244,8 @@ namespace LibGit2Sharp.Tests
                                                                   new { Name = "origin/packed-test", Sha = "4a202b346bb0fb0db7eff3cffeb3c70babbd2045", IsRemote = true },
                                                                   new { Name = "origin/test", Sha = "e90810b8df3e80c413d903f631643c716887138d", IsRemote = true },
                                                               };
-                Assert.Equal(expectedBranchesIncludingRemoteRefs, repo.Branches.Select(b => new { b.Name, b.Tip.Sha, b.IsRemote }).ToArray());
+                Assert.Equal(expectedBranchesIncludingRemoteRefs,
+                             SortedBranches(repo.Branches, b => new { b.Name, b.Tip.Sha, b.IsRemote }));
             }
         }
 
@@ -233,7 +255,7 @@ namespace LibGit2Sharp.Tests
             using (var repo = new Repository(StandardTestRepoPath))
             {
                 Branch master = repo.Branches["master"];
-                Assert.Equal(repo.Remotes["origin"], master.Remote);
+                Assert.Equal(repo.Network.Remotes["origin"], master.Remote);
             }
         }
 
@@ -333,10 +355,13 @@ namespace LibGit2Sharp.Tests
                 Assert.Null(head.Tip);
                 Assert.Null(head["huh?"]);
 
-                Assert.Null(head.AheadBy);
-                Assert.Null(head.BehindBy);
                 Assert.False(head.IsTracking);
                 Assert.Null(head.TrackedBranch);
+
+                Assert.NotNull(head.TrackingDetails);
+                Assert.Null(head.TrackingDetails.AheadBy);
+                Assert.Null(head.TrackingDetails.BehindBy);
+                Assert.Null(head.TrackingDetails.CommonAncestor);
             }
         }
 
@@ -350,9 +375,12 @@ namespace LibGit2Sharp.Tests
                 repo.Refs.UpdateTarget("refs/remotes/origin/master", "origin/test");
 
                 Assert.True(master.IsTracking);
-                Assert.Null(master.AheadBy);
-                Assert.Null(master.BehindBy);
                 Assert.NotNull(master.TrackedBranch);
+
+                Assert.NotNull(master.TrackingDetails);
+                Assert.Equal(9, master.TrackingDetails.AheadBy);
+                Assert.Equal(2, master.TrackingDetails.BehindBy);
+                Assert.Null(repo.Head.TrackingDetails.CommonAncestor);
             }
         }
 
@@ -364,8 +392,11 @@ namespace LibGit2Sharp.Tests
                 Branch branch = repo.Branches["test"];
                 Assert.False(branch.IsTracking);
                 Assert.Null(branch.TrackedBranch);
-                Assert.Null(branch.AheadBy);
-                Assert.Null(branch.BehindBy);
+
+                Assert.NotNull(branch.TrackingDetails);
+                Assert.Null(branch.TrackingDetails.AheadBy);
+                Assert.Null(branch.TrackingDetails.BehindBy);
+                Assert.Null(branch.TrackingDetails.CommonAncestor);
             }
         }
 
@@ -377,8 +408,11 @@ namespace LibGit2Sharp.Tests
                 Branch master = repo.Branches["master"];
                 Assert.True(master.IsTracking);
                 Assert.Equal(repo.Branches["refs/remotes/origin/master"], master.TrackedBranch);
-                Assert.Equal(2, master.AheadBy);
-                Assert.Equal(2, master.BehindBy);
+
+                Assert.NotNull(master.TrackingDetails);
+                Assert.Equal(2, master.TrackingDetails.AheadBy);
+                Assert.Equal(2, master.TrackingDetails.BehindBy);
+                Assert.Equal(repo.Lookup<Commit>("4c062a6"), master.TrackingDetails.CommonAncestor);
             }
         }
 
@@ -390,8 +424,11 @@ namespace LibGit2Sharp.Tests
                 var branch = repo.Branches["track-local"];
                 Assert.True(branch.IsTracking);
                 Assert.Equal(repo.Branches["master"], branch.TrackedBranch);
-                Assert.Equal(2, branch.AheadBy);
-                Assert.Equal(2, branch.BehindBy);
+
+                Assert.NotNull(branch.TrackingDetails);
+                Assert.Equal(2, branch.TrackingDetails.AheadBy);
+                Assert.Equal(2, branch.TrackingDetails.BehindBy);
+                Assert.Equal(repo.Lookup<Commit>("4c062a6"), branch.TrackingDetails.CommonAncestor);
             }
         }
 
@@ -414,6 +451,134 @@ namespace LibGit2Sharp.Tests
             {
                 Branch master = repo.Branches["test"];
                 Assert.Equal(2, master.Commits.Count());
+            }
+        }
+
+        [Fact]
+        public void CanSetUpstreamBranch()
+        {
+            const string testBranchName = "branchToSetUpstreamInfoFor";
+            const string upstreamBranchName = "refs/remotes/origin/master";
+
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
+
+            using (var repo = new Repository(path.RepositoryPath))
+            {
+                Branch branch = repo.CreateBranch(testBranchName);
+                Assert.False(branch.IsTracking);
+
+                Branch upstreamBranch = repo.Branches[upstreamBranchName];
+                repo.Branches.Update(branch,
+                    b => b.Upstream = upstreamBranch.CanonicalName);
+
+                // Verify the immutability of the branch.
+                Assert.False(branch.IsTracking);
+
+                // Get the updated branch information.
+                branch = repo.Branches[testBranchName];
+
+                Remote upstreamRemote = repo.Network.Remotes["origin"];
+                Assert.NotNull(upstreamRemote);
+
+                Assert.True(branch.IsTracking);
+                Assert.Equal(upstreamBranch, branch.TrackedBranch);
+                Assert.Equal(upstreamRemote, branch.Remote);
+            }
+        }
+
+        [Fact]
+        public void CanSetUpstreamMergeBranch()
+        {
+            const string testBranchName = "branchToSetUpstreamInfoFor";
+            const string mergeBranchName = "refs/heads/master";
+            const string upstreamBranchName = "refs/remotes/origin/master";
+            const string upstreamRemoteName = "origin";
+
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
+
+            using (var repo = new Repository(path.RepositoryPath))
+            {
+                Branch branch = repo.CreateBranch(testBranchName);
+                Assert.False(branch.IsTracking);
+
+                Branch upstreamBranch = repo.Branches[upstreamBranchName];
+                Branch updatedBranch = repo.Branches.Update(branch,
+                    b => b.UpstreamRemote = upstreamRemoteName,
+                    b => b.UpstreamMergeBranch =  mergeBranchName);
+
+                // Verify the immutability of the branch.
+                Assert.False(branch.IsTracking);
+
+                Remote upstreamRemote = repo.Network.Remotes[upstreamRemoteName];
+                Assert.NotNull(upstreamRemote);
+
+                Assert.True(updatedBranch.IsTracking);
+                Assert.Equal(upstreamBranch, updatedBranch.TrackedBranch);
+                Assert.Equal(upstreamRemote, updatedBranch.Remote);
+            }
+        }
+
+        [Fact]
+        public void CanSetLocalUpstreamBranch()
+        {
+            const string testBranchName = "branchToSetUpstreamInfoFor";
+            const string upstreamBranchName = "refs/heads/master";
+
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
+
+            using (var repo = new Repository(path.RepositoryPath))
+            {
+                Branch branch = repo.CreateBranch(testBranchName);
+                Assert.False(branch.IsTracking);
+
+                Branch upstreamBranch = repo.Branches[upstreamBranchName];
+
+                repo.Branches.Update(branch,
+                    b => b.Upstream = upstreamBranch.CanonicalName);
+
+                // Get the updated branch information.
+                branch = repo.Branches[testBranchName];
+
+                // Branches that track the local remote do not have the "Remote" property set.
+                // Verify (through the configuration entry) that the local remote is set as expected.
+                Assert.Null(branch.Remote);
+                ConfigurationEntry<string> remoteConfigEntry = repo.Config.Get<string>("branch", testBranchName, "remote");
+                Assert.NotNull(remoteConfigEntry);
+                Assert.Equal(".", remoteConfigEntry.Value);
+
+                ConfigurationEntry<string> mergeConfigEntry = repo.Config.Get<string>("branch", testBranchName, "merge");
+                Assert.NotNull(mergeConfigEntry);
+                Assert.Equal("refs/heads/master", mergeConfigEntry.Value);
+
+                // Verify the IsTracking and TrackedBranch properties.
+                Assert.True(branch.IsTracking);
+                Assert.Equal(upstreamBranch, branch.TrackedBranch);
+            }
+        }
+
+        [Fact]
+        public void CanUnsetUpstreamBranch()
+        {
+            const string testBranchName = "branchToSetUpstreamInfoFor";
+            const string upstreamBranchName = "refs/remotes/origin/master";
+
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
+            using (var repo = new Repository(path.RepositoryPath))
+            {
+                Branch branch = repo.CreateBranch(testBranchName);
+                Assert.False(branch.IsTracking);
+
+                branch = repo.Branches.Update(branch,
+                    b => b.Upstream = upstreamBranchName);
+
+                // Got the updated branch from the Update() method
+                Assert.True(branch.IsTracking);
+
+                branch = repo.Branches.Update(branch,
+                    b => b.Upstream = null);
+
+                // Verify this is no longer a tracking branch
+                Assert.False(branch.IsTracking);
             }
         }
 
@@ -602,6 +767,11 @@ namespace LibGit2Sharp.Tests
 
                 Assert.False(repo.Head.IsTracking);
                 Assert.Null(repo.Head.TrackedBranch);
+
+                Assert.NotNull(repo.Head.TrackingDetails);
+                Assert.Null(repo.Head.TrackingDetails.AheadBy);
+                Assert.Null(repo.Head.TrackingDetails.BehindBy);
+                Assert.Null(repo.Head.TrackingDetails.CommonAncestor);
             }
         }
 
@@ -621,8 +791,15 @@ namespace LibGit2Sharp.Tests
             {
                 Assert.Empty(Directory.GetFiles(scd2.RootedDirectoryPath));
                 Assert.Equal(repo.Head.Name, "master");
+
                 Assert.Null(repo.Head.Tip);
                 Assert.NotNull(repo.Head.TrackedBranch);
+                Assert.Null(repo.Head.TrackedBranch.Tip);
+
+                Assert.NotNull(repo.Head.TrackingDetails);
+                Assert.Null(repo.Head.TrackingDetails.AheadBy);
+                Assert.Null(repo.Head.TrackingDetails.BehindBy);
+                Assert.Null(repo.Head.TrackingDetails.CommonAncestor);
 
                 Assert.NotNull(repo.Head.Remote);
                 Assert.Equal("origin", repo.Head.Remote.Name);
@@ -633,6 +810,12 @@ namespace LibGit2Sharp.Tests
 
                 Assert.NotNull(repo.Head.Tip);
                 Assert.NotNull(repo.Head.TrackedBranch);
+                Assert.Null(repo.Head.TrackedBranch.Tip);
+
+                Assert.NotNull(repo.Head.TrackingDetails);
+                Assert.Null(repo.Head.TrackingDetails.AheadBy);
+                Assert.Null(repo.Head.TrackingDetails.BehindBy);
+                Assert.Null(repo.Head.TrackingDetails.CommonAncestor);
             }
         }
 
@@ -646,13 +829,21 @@ namespace LibGit2Sharp.Tests
                 foreach (var branch in branches)
                 {
                     Assert.True(branch.IsRemote);
-                    Assert.Null(branch.Remote);
+                    Assert.NotNull(branch.Remote);
                     Assert.False(branch.IsTracking);
                     Assert.Null(branch.TrackedBranch);
-                    Assert.Null(branch.AheadBy);
-                    Assert.Null(branch.BehindBy);
+
+                    Assert.NotNull(branch.TrackingDetails);
+                    Assert.Null(branch.TrackingDetails.AheadBy);
+                    Assert.Null(branch.TrackingDetails.BehindBy);
+                    Assert.Null(branch.TrackingDetails.CommonAncestor);
                 }
             }
+        }
+
+        private static T[] SortedBranches<T>(IEnumerable<Branch> branches, Func<Branch, T> selector)
+        {
+            return branches.OrderBy(b => b.CanonicalName, StringComparer.Ordinal).Select(selector).ToArray();
         }
     }
 }

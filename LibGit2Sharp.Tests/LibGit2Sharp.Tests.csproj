@@ -37,7 +37,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Leaks\</OutputPath>
-    <DefineConstants>TRACE;DEBUG;NET35</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;NET35;LEAKS</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <DocumentationFile />
@@ -49,6 +49,7 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Xml" />
     <Reference Include="xunit">
       <HintPath>..\Lib\xUnit\xunit.dll</HintPath>
     </Reference>
@@ -58,8 +59,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CheckoutFixture.cs" />
+    <Compile Include="StageFixture.cs" />
+    <Compile Include="StashFixture.cs" />
     <Compile Include="CloneFixture.cs" />
+    <Compile Include="ConflictFixture.cs" />
     <Compile Include="IgnoreFixture.cs" />
+    <Compile Include="FetchHeadFixture.cs" />
     <Compile Include="MergeFixture.cs" />
     <Compile Include="CleanFixture.cs" />
     <Compile Include="CurrentOperationFixture.cs" />
@@ -68,6 +73,7 @@
     <Compile Include="ConfigurationFixture.cs" />
     <Compile Include="AttributesFixture.cs" />
     <Compile Include="CommitAncestorFixture.cs" />
+    <Compile Include="NetworkFixture.cs" />
     <Compile Include="NoteFixture.cs" />
     <Compile Include="DiffBlobToBlobFixture.cs" />
     <Compile Include="DiffTreeToTargetFixture.cs" />
@@ -104,6 +110,7 @@
     <Compile Include="TreeDefinitionFixture.cs" />
     <Compile Include="TreeFixture.cs" />
     <Compile Include="TupleFixture.cs" />
+    <Compile Include="UnstageFixture.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LibGit2Sharp\LibGit2Sharp.csproj">

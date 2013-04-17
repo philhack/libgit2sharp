@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using LibGit2Sharp.Tests.TestHelpers;
 using Xunit;
 
@@ -47,7 +45,43 @@ namespace LibGit2Sharp.Tests
                 repo.Ignore.ResetAllTemporaryRules();
 
                 Assert.False(repo.Ignore.IsPathIgnored("Foo.cs"));
-            }           
+            }
+        }
+
+        [Fact]
+        public void CallingIsPathIgnoredWithBadParamsThrows()
+        {
+            using (var repo = new Repository(StandardTestRepoWorkingDirPath))
+            {
+                Assert.Throws<ArgumentException>(() => repo.Ignore.IsPathIgnored(string.Empty));
+                Assert.Throws<ArgumentNullException>(() => repo.Ignore.IsPathIgnored(null));
+            }
+        }
+
+        [Fact]
+        public void AddingATemporaryRuleWithBadParamsThrows()
+        {
+            using (var repo = new Repository(StandardTestRepoWorkingDirPath))
+            {
+                Assert.Throws<ArgumentNullException>(() => repo.Ignore.AddTemporaryRules(null));
+            }
+        }
+
+        [Fact]
+        public void CanCheckIfAPathIsIgnoredUsingThePreferedPlatformDirectorySeparatorChar()
+        {
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
+
+            using (var repo = new Repository(path.RepositoryPath))
+            {
+                string ignorePath = Path.Combine(repo.Info.WorkingDirectory, ".gitignore");
+                File.WriteAllText(ignorePath, "/NewFolder\n/NewFolder/NewFolder");
+
+                Assert.False(repo.Ignore.IsPathIgnored("File.txt"));
+                Assert.True(repo.Ignore.IsPathIgnored("NewFolder"));
+                Assert.True(repo.Ignore.IsPathIgnored(string.Format(@"NewFolder{0}NewFolder", Path.DirectorySeparatorChar)));
+                Assert.True(repo.Ignore.IsPathIgnored(string.Format(@"NewFolder{0}NewFolder{0}File.txt", Path.DirectorySeparatorChar)));
+            }
         }
     }
 }

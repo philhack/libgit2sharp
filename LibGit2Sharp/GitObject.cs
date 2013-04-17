@@ -26,7 +26,7 @@ namespace LibGit2Sharp
             new LambdaEqualityHelper<GitObject>(x => x.Id);
 
         /// <summary>
-        ///   The <see cref = "Repository" /> containing the object. 
+        ///   The <see cref = "Repository" /> containing the object.
         /// </summary>
         protected readonly Repository repo;
 
@@ -139,6 +139,15 @@ namespace LibGit2Sharp
         public static bool operator !=(GitObject left, GitObject right)
         {
             return !Equals(left, right);
+        }
+
+        /// <summary>
+        ///   Returns the <see cref = "Id" />, a <see cref = "String" /> representation of the current <see cref = "GitObject" />.
+        /// </summary>
+        /// <returns>The <see cref = "Id" /> that represents the current <see cref = "GitObject" />.</returns>
+        public override string ToString()
+        {
+            return Id.ToString();
         }
 
         private string DebuggerDisplay

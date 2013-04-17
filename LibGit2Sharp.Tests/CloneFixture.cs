@@ -46,8 +46,53 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(1, clonedRepo.Branches.Count(b => !b.IsRemote));
 
                 Assert.Equal(originalRepo.Tags.Count(), clonedRepo.Tags.Count());
-                Assert.Equal(1, clonedRepo.Remotes.Count());
+                Assert.Equal(1, clonedRepo.Network.Remotes.Count());
             }
+        }
+
+        [Fact]
+        public void CanLocallyCloneAndCommitAndPush()
+        {
+            var scd = BuildSelfCleaningDirectory();
+            using (var originalRepo = new Repository(BuildTemporaryCloneOfTestRepo(BareTestRepoPath).RepositoryPath))
+            using (Repository clonedRepo = Repository.Clone(originalRepo.Info.Path, scd.RootedDirectoryPath))
+            {
+                Remote remote = clonedRepo.Network.Remotes["origin"];
+
+                // Compare before
+                Assert.Equal(originalRepo.Refs["HEAD"].ResolveToDirectReference().TargetIdentifier,
+                    clonedRepo.Refs["HEAD"].ResolveToDirectReference().TargetIdentifier);
+                Assert.Equal(clonedRepo.Network.ListReferences(remote).Single(r => r.CanonicalName == "refs/heads/master"),
+                    clonedRepo.Refs.Head.ResolveToDirectReference());
+
+                // Change local state (commit)
+                const string relativeFilepath = "new_file.txt";
+                string filePath = Path.Combine(clonedRepo.Info.WorkingDirectory, relativeFilepath);
+                File.WriteAllText(filePath, "__content__");
+                clonedRepo.Index.Stage(relativeFilepath);
+                clonedRepo.Commit("__commit_message__", DummySignature, DummySignature);
+
+                // Assert local state has changed
+                Assert.NotEqual(originalRepo.Refs["HEAD"].ResolveToDirectReference().TargetIdentifier,
+                    clonedRepo.Refs["HEAD"].ResolveToDirectReference().TargetIdentifier);
+                Assert.NotEqual(clonedRepo.Network.ListReferences(remote).Single(r => r.CanonicalName == "refs/heads/master"),
+                    clonedRepo.Refs.Head.ResolveToDirectReference());
+
+                // Push the change upstream (remote state is supposed to change)
+                clonedRepo.Network.Push(remote, "HEAD", @"refs/heads/master", OnPushStatusError);
+
+                // Assert that both local and remote repos are in sync
+                Assert.Equal(originalRepo.Refs["HEAD"].ResolveToDirectReference().TargetIdentifier,
+                    clonedRepo.Refs["HEAD"].ResolveToDirectReference().TargetIdentifier);
+                Assert.Equal(clonedRepo.Network.ListReferences(remote).Single(r => r.CanonicalName == "refs/heads/master"),
+                    clonedRepo.Refs.Head.ResolveToDirectReference());
+            }
+        }
+
+        private void OnPushStatusError(PushStatusError pushStatusErrors)
+        {
+            Assert.True(false, string.Format("Failed to update reference '{0}': {1}",
+                pushStatusErrors.Reference, pushStatusErrors.Message));
         }
 
         [Fact]
@@ -103,7 +148,7 @@ namespace LibGit2Sharp.Tests
 
             var scd = BuildSelfCleaningDirectory();
             using (Repository repo = Repository.Clone(url, scd.RootedDirectoryPath,
-                onTransferProgress: (_) => transferWasCalled = true,
+                onTransferProgress: (_) => { transferWasCalled = true; return 0; },
                 onCheckoutProgress: (a, b, c) => checkoutWasCalled = true))
             {
                 Assert.True(transferWasCalled);

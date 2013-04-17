@@ -347,7 +347,10 @@ namespace LibGit2Sharp.Tests
         public void CanEnumerateAllCommits()
         {
             AssertEnumerationOfCommits(
-                repo => new Filter { Since = repo.Refs },
+                repo => new Filter
+                    {
+                        Since = repo.Refs.OrderBy(r => r.CanonicalName, StringComparer.Ordinal),
+                    },
                 new[]
                     {
                         "44d5d18", "bb65291", "532740a", "503a16f", "3dfd6fd",
@@ -494,7 +497,7 @@ namespace LibGit2Sharp.Tests
         {
             SelfCleaningDirectory scd = BuildSelfCleaningDirectory();
 
-            using (var repo = Repository.Init(scd.DirectoryPath)) 
+            using (var repo = Repository.Init(scd.DirectoryPath))
             {
                 string dir = repo.Info.Path;
                 Assert.True(Path.IsPathRooted(dir));
@@ -618,7 +621,7 @@ namespace LibGit2Sharp.Tests
                 AssertBlobContent(commit[relativeFilepath], "nulltoken\n");
 
                 Assert.Equal(0, commit.Parents.Count());
-                Assert.False(repo.Info.IsEmpty);
+                Assert.False(repo.Info.IsHeadOrphaned);
 
                 File.WriteAllText(filePath, "nulltoken commits!\n");
                 repo.Index.Stage(relativeFilepath);
@@ -812,6 +815,29 @@ namespace LibGit2Sharp.Tests
 
                 Assert.Equal(author, c.Author);
                 Assert.Equal(committer, c.Committer);
+            }
+        }
+
+        [Fact]
+        public void CanCommitOnOrphanedBranch()
+        {
+            string newBranchName = "refs/heads/newBranch";
+            SelfCleaningDirectory scd = BuildSelfCleaningDirectory();
+
+            using (var repo = Repository.Init(scd.DirectoryPath))
+            {
+                // Set Head to point to branch other than master
+                repo.Refs.UpdateTarget("HEAD", newBranchName);
+                Assert.Equal(newBranchName, repo.Head.CanonicalName);
+
+                const string relativeFilepath = "test.txt";
+                string filePath = Path.Combine(repo.Info.WorkingDirectory, relativeFilepath);
+
+                File.WriteAllText(filePath, "test\n");
+                repo.Index.Stage(relativeFilepath);
+
+                repo.Commit("Initial commit", DummySignature, DummySignature);
+                Assert.Equal(1, repo.Head.Commits.Count());
             }
         }
     }

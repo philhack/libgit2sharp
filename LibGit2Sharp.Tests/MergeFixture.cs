@@ -1,5 +1,4 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using LibGit2Sharp.Tests.TestHelpers;
 using Xunit;
@@ -71,7 +70,7 @@ namespace LibGit2Sharp.Tests
                 const string secondBranch = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
                 string mergeHeadPath = Path.Combine(repo.Info.Path, "MERGE_HEAD");
-                File.WriteAllText(mergeHeadPath, 
+                File.WriteAllText(mergeHeadPath,
                     string.Format("{0}{1}{2}{1}", firstBranch, "\n", secondBranch));
 
                 Assert.Equal(CurrentOperation.Merge, repo.Info.CurrentOperation);

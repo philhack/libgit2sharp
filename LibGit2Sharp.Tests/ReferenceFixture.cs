@@ -12,7 +12,7 @@ namespace LibGit2Sharp.Tests
         private readonly string[] expectedRefs = new[]
                                                      {
                                                          "refs/heads/br2", "refs/heads/deadbeef", "refs/heads/master", "refs/heads/packed", "refs/heads/packed-test",
-                                                         "refs/heads/test", "refs/notes/answer", "refs/notes/answer2", "refs/notes/commits", "refs/tags/e90810b", 
+                                                         "refs/heads/test", "refs/notes/answer", "refs/notes/answer2", "refs/notes/commits", "refs/tags/e90810b",
                                                          "refs/tags/lw", "refs/tags/point_to_blob", "refs/tags/test"
                                                      };
 
@@ -283,7 +283,7 @@ namespace LibGit2Sharp.Tests
             {
                 CreateCorruptedDeadBeefHead(repo.Info.Path);
 
-                Assert.Equal(expectedRefs, repo.Refs.Select(r => r.CanonicalName).ToArray());
+                Assert.Equal(expectedRefs, SortedRefs(repo, r => r.CanonicalName));
 
                 Assert.Equal(13, repo.Refs.Count());
             }
@@ -675,12 +675,20 @@ namespace LibGit2Sharp.Tests
         [InlineData("refs/stash", true)]
         [InlineData("refs/heads/pmiossec-branch", true)]
         [InlineData("refs/heads/pmiossec@{0}", false)]
+        [InlineData("refs/heads/sher.lock", false)]
+        [InlineData("refs/heads/sher.lock/holmes", false)]
+        [InlineData("/", false)]
         public void CanTellIfAReferenceIsValid(string refname, bool expectedResult)
         {
             using (var repo = new Repository(BareTestRepoPath))
             {
                 Assert.Equal(expectedResult, repo.Refs.IsValidName(refname));
             }
+        }
+
+        private static T[] SortedRefs<T>(IRepository repo, Func<Reference, T> selector)
+        {
+            return repo.Refs.OrderBy(r => r.CanonicalName, StringComparer.Ordinal).Select(selector).ToArray();
         }
     }
 }

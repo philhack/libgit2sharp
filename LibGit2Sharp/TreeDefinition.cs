@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -104,7 +104,7 @@ namespace LibGit2Sharp
 
             if (treeEntryDefinition is TransientTreeTreeEntryDefinition)
             {
-                throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture, 
+                throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture,
                     "The {0} references a target which hasn't been created in the {1} yet. " +
                     "This situation can occur when the target is a whole new {2} being created, or when an existing {2} is being updated because some of its children were added/removed.",
                     typeof(TreeEntryDefinition).Name, typeof(ObjectDatabase).Name, typeof(Tree).Name));
@@ -135,8 +135,7 @@ namespace LibGit2Sharp
         public virtual TreeDefinition Add(string targetTreeEntryPath, Blob blob, Mode mode)
         {
             Ensure.ArgumentNotNull(blob, "blob");
-            Ensure.ArgumentConformsTo(mode,
-                                      m => m.HasAny(new[] { Mode.ExecutableFile, Mode.NonExecutableFile, Mode.NonExecutableGroupWritableFile }), "mode");
+            Ensure.ArgumentConformsTo(mode, m => m.HasAny(TreeEntryDefinition.BlobModes), "mode");
 
             TreeEntryDefinition ted = TreeEntryDefinition.From(blob, mode);
 
@@ -230,7 +229,7 @@ namespace LibGit2Sharp
 
             using (var builder = new TreeBuilder())
             {
-                var builtTreeEntryDefinitions = new List<Tuple<string, TreeEntryDefinition>>();
+                var builtTreeEntryDefinitions = new List<Tuple<string, TreeEntryDefinition>>(entries.Count);
 
                 foreach (KeyValuePair<string, TreeEntryDefinition> kvp in entries)
                 {

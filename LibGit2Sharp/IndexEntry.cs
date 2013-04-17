@@ -18,7 +18,7 @@ namespace LibGit2Sharp
         private Func<FileStatus> state;
 
         /// <summary>
-        ///   State of the version of the <see cref = "Blob" /> pointed at by this <see cref = "IndexEntry" />, 
+        ///   State of the version of the <see cref = "Blob" /> pointed at by this <see cref = "IndexEntry" />,
         ///   compared against the <see cref = "Blob" /> known from the <see cref = "Repository.Head" /> and the file in the working directory.
         /// </summary>
         [Obsolete("This method will be removed in the next release. Please use Repository.Index.RetrieveStatus(filePath) overload instead.")]
@@ -49,7 +49,7 @@ namespace LibGit2Sharp
 
         internal static IndexEntry BuildFromPtr(Repository repo, IndexEntrySafeHandle handle)
         {
-            if (handle == null)
+            if (handle == null || handle.IsZero)
             {
                 return null;
             }
@@ -61,7 +61,7 @@ namespace LibGit2Sharp
             return new IndexEntry
                        {
                            Path = path.Native,
-                           Id = new ObjectId(entry.oid),
+                           Id = entry.oid,
                            state = () => repo.Index.RetrieveStatus(path.Native),
                            StageLevel = Proxy.git_index_entry_stage(handle),
                            Mode = (Mode)entry.Mode
@@ -124,7 +124,7 @@ namespace LibGit2Sharp
             get
             {
                 return string.Format(CultureInfo.InvariantCulture,
-                    "{0} => \"{1}\"", Path, Id.ToString(7));
+                    "{0} ({1}) => \"{2}\"", Path, StageLevel, Id.ToString(7));
             }
         }
     }

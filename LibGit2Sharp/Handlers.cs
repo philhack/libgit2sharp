@@ -1,13 +1,13 @@
 ﻿namespace LibGit2Sharp.Handlers
 {
     /// <summary>
-    ///   Delegate definition to handle Progress callback. 
+    ///   Delegate definition to handle Progress callback.
     ///   Returns the text as reported by the server. The text
     ///   in the serverProgressOutput parameter is not delivered
     ///   in any particular units (i.e. not necessarily delivered
     ///   as whole lines) and is likely to be chunked as partial lines.
     /// </summary>
-    /// <param name="serverProgressOutput">text reported by the server. 
+    /// <param name="serverProgressOutput">text reported by the server.
     ///   Text can be chunked at arbitrary increments (i.e. can be composed
     ///   of a partial line of text).</param>
     public delegate void ProgressHandler(string serverProgressOutput);
@@ -30,7 +30,14 @@
     ///   Delegate definition for transfer progress callback.
     /// </summary>
     /// <param name="progress">The <see cref = "TransferProgress" /> object containing progress information.</param>
-    public delegate void TransferProgressHandler(TransferProgress progress);
+    /// <returns>Return negative integer to cancel.</returns>
+    public delegate int TransferProgressHandler(TransferProgress progress);
+
+    /// <summary>
+    ///   Delegate definition to handle reporting errors when updating references on the remote.
+    /// </summary>
+    /// <param name="pushStatusErrors">The reference name and error from the server.</param>
+    public delegate void PushStatusErrorHandler(PushStatusError pushStatusErrors);
 
     /// <summary>
     ///   Delegate definition for checkout progress callback.

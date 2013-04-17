@@ -5,8 +5,8 @@ using LibGit2Sharp.Handlers;
 namespace LibGit2Sharp
 {
     /// <summary>
-    ///   Class to handle the mapping between libgit2 git_transfer_progress_callback function and 
-    ///   a corresponding <see cref = "TransferProgressHandler" />. Generates a delegate that 
+    ///   Class to handle the mapping between libgit2 git_transfer_progress_callback function and
+    ///   a corresponding <see cref = "TransferProgressHandler" />. Generates a delegate that
     ///   wraps the <see cref = "TransferProgressHandler" /> delegate with a delegate that matches
     ///   the git_transfer_progress_callback signature.
     /// </summary>
@@ -15,7 +15,7 @@ namespace LibGit2Sharp
         /// <summary>
         ///   Managed delegate to be called in response to a git_transfer_progress_callback callback from libgit2.
         /// </summary>
-        private TransferProgressHandler onTransferProgress;
+        private readonly TransferProgressHandler onTransferProgress;
 
         /// <summary>
         ///   Constructor to set up the native callback given managed delegate.
@@ -46,9 +46,10 @@ namespace LibGit2Sharp
         /// </summary>
         /// <param name="progress"><see cref = "GitTransferProgress" /> structure containing progress information.</param>
         /// <param name="payload">Payload data.</param>
-        private void OnGitTransferProgress(ref GitTransferProgress progress, IntPtr payload)
+        /// <returns>the result of the wrapped <see cref = "TransferProgressHandler" /></returns>
+        private int OnGitTransferProgress(ref GitTransferProgress progress, IntPtr payload)
         {
-            onTransferProgress(new TransferProgress(progress));
+            return onTransferProgress(new TransferProgress(progress));
         }
     }
 }

@@ -19,21 +19,25 @@ namespace LibGit2Sharp
     [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class Repository : IRepository
     {
+        private readonly bool isBare;
         private readonly BranchCollection branches;
         private readonly CommitLog commits;
         private readonly Lazy<Configuration> config;
         private readonly RepositorySafeHandle handle;
         private readonly Index index;
+        private readonly ConflictCollection conflicts;
         private readonly ReferenceCollection refs;
-        private readonly Lazy<RemoteCollection> remotes;
         private readonly TagCollection tags;
+        private readonly StashCollection stashes;
         private readonly Lazy<RepositoryInformation> info;
         private readonly Diff diff;
         private readonly NoteCollection notes;
         private readonly Lazy<ObjectDatabase> odb;
+        private readonly Lazy<Network> network;
         private readonly Stack<IDisposable> toCleanup = new Stack<IDisposable>();
         private readonly Ignore ignore;
         private static readonly Lazy<string> versionRetriever = new Lazy<string>(RetrieveVersion);
+        private readonly Lazy<PathCase> pathCase;
 
         /// <summary>
         ///   Initializes a new instance of the <see cref = "Repository" /> class, providing ooptional behavioral overrides through <paramref name="options"/> parameter.
@@ -50,62 +54,78 @@ namespace LibGit2Sharp
         {
             Ensure.ArgumentNotNullOrEmptyString(path, "path");
 
-            handle = Proxy.git_repository_open(path);
-            RegisterForCleanup(handle);
-
-            bool isBare = Proxy.git_repository_is_bare(handle);
-
-            Func<Index> indexBuilder = () => new Index(this);
-
-            string configurationGlobalFilePath = null;
-            string configurationXDGFilePath = null;
-            string configurationSystemFilePath = null;
-
-            if (options != null)
+            try
             {
-                bool isWorkDirNull = string.IsNullOrEmpty(options.WorkingDirectoryPath);
-                bool isIndexNull = string.IsNullOrEmpty(options.IndexPath);
+                handle = Proxy.git_repository_open(path);
+                RegisterForCleanup(handle);
 
-                if (isBare && (isWorkDirNull ^ isIndexNull))
+                isBare = Proxy.git_repository_is_bare(handle);
+
+                Func<Index> indexBuilder = () => new Index(this);
+
+                string configurationGlobalFilePath = null;
+                string configurationXDGFilePath = null;
+                string configurationSystemFilePath = null;
+
+                if (options != null)
                 {
-                    throw new ArgumentException("When overriding the opening of a bare repository, both RepositoryOptions.WorkingDirectoryPath an RepositoryOptions.IndexPath have to be provided.");
+                    bool isWorkDirNull = string.IsNullOrEmpty(options.WorkingDirectoryPath);
+                    bool isIndexNull = string.IsNullOrEmpty(options.IndexPath);
+
+                    if (isBare && (isWorkDirNull ^ isIndexNull))
+                    {
+                        throw new ArgumentException(
+                            "When overriding the opening of a bare repository, both RepositoryOptions.WorkingDirectoryPath an RepositoryOptions.IndexPath have to be provided.");
+                    }
+
+                    isBare = false;
+
+                    if (!isIndexNull)
+                    {
+                        indexBuilder = () => new Index(this, options.IndexPath);
+                    }
+
+                    if (!isWorkDirNull)
+                    {
+                        Proxy.git_repository_set_workdir(handle, options.WorkingDirectoryPath);
+                    }
+
+                    configurationGlobalFilePath = options.GlobalConfigurationLocation;
+                    configurationXDGFilePath = options.XdgConfigurationLocation;
+                    configurationSystemFilePath = options.SystemConfigurationLocation;
                 }
 
-                isBare = false;
-
-                if (!isIndexNull)
+                if (!isBare)
                 {
-                    indexBuilder = () => new Index(this, options.IndexPath);
+                    index = indexBuilder();
+                    conflicts = new ConflictCollection(this);
                 }
 
-                if (!isWorkDirNull)
-                {
-                    Proxy.git_repository_set_workdir(handle, options.WorkingDirectoryPath);
-                }
+                commits = new CommitLog(this);
+                refs = new ReferenceCollection(this);
+                branches = new BranchCollection(this);
+                tags = new TagCollection(this);
+                stashes = new StashCollection(this);
+                info = new Lazy<RepositoryInformation>(() => new RepositoryInformation(this, isBare));
+                config =
+                    new Lazy<Configuration>(
+                        () =>
+                        RegisterForCleanup(new Configuration(this, configurationGlobalFilePath, configurationXDGFilePath,
+                                                             configurationSystemFilePath)));
+                odb = new Lazy<ObjectDatabase>(() => new ObjectDatabase(this));
+                diff = new Diff(this);
+                notes = new NoteCollection(this);
+                ignore = new Ignore(this);
+                network = new Lazy<Network>(() => new Network(this));
+                pathCase = new Lazy<PathCase>(() => new PathCase(this));
 
-                configurationGlobalFilePath = options.GlobalConfigurationLocation;
-                configurationXDGFilePath = options.XdgConfigurationLocation;
-                configurationSystemFilePath = options.SystemConfigurationLocation;
+                EagerlyLoadTheConfigIfAnyPathHaveBeenPassed(options);
             }
-
-            if (!isBare)
+            catch
             {
-                index = indexBuilder();
+                CleanupDisposableDependencies();
+                throw;
             }
-
-            commits = new CommitLog(this);
-            refs = new ReferenceCollection(this);
-            branches = new BranchCollection(this);
-            tags = new TagCollection(this);
-            info = new Lazy<RepositoryInformation>(() => new RepositoryInformation(this, isBare));
-            config = new Lazy<Configuration>(() => RegisterForCleanup(new Configuration(this, configurationGlobalFilePath, configurationXDGFilePath, configurationSystemFilePath)));
-            remotes = new Lazy<RemoteCollection>(() => new RemoteCollection(this));
-            odb = new Lazy<ObjectDatabase>(() => new ObjectDatabase(this));
-            diff = new Diff(this);
-            notes = new NoteCollection(this);
-            ignore = new Ignore(this);
-
-            EagerlyLoadTheConfigIfAnyPathHaveBeenPassed(options);
         }
 
         private void EagerlyLoadTheConfigIfAnyPathHaveBeenPassed(RepositoryOptions options)
@@ -131,14 +151,6 @@ namespace LibGit2Sharp
             }
         }
 
-        /// <summary>
-        ///   Takes care of releasing all non-managed remaining resources.
-        /// </summary>
-        ~Repository()
-        {
-            Dispose(false);
-        }
-
         internal RepositorySafeHandle Handle
         {
             get { return handle; }
@@ -153,6 +165,11 @@ namespace LibGit2Sharp
             get
             {
                 Reference reference = Refs.Head;
+
+                if (reference == null)
+                {
+                    throw new LibGit2SharpException("Corrupt repository. The 'HEAD' reference is missing.");
+                }
 
                 if (reference is SymbolicReference)
                 {
@@ -178,12 +195,28 @@ namespace LibGit2Sharp
         {
             get
             {
-                if (index == null)
+                if (isBare)
                 {
                     throw new BareRepositoryException("Index is not available in a bare repository.");
                 }
 
                 return index;
+            }
+        }
+
+        /// <summary>
+        ///  Gets the conflicts that exist.
+        /// </summary>
+        public ConflictCollection Conflicts
+        {
+            get
+            {
+                if (isBare)
+                {
+                    throw new BareRepositoryException("Conflicts are not available in a bare repository.");
+                }
+
+                return conflicts;
             }
         }
 
@@ -195,6 +228,17 @@ namespace LibGit2Sharp
             get
             {
                 return ignore;
+            }
+        }
+
+        /// <summary>
+        ///   Provides access to network functionality for a repository.
+        /// </summary>
+        public Network Network
+        {
+            get
+            {
+                return network.Value;
             }
         }
 
@@ -220,9 +264,10 @@ namespace LibGit2Sharp
         /// <summary>
         ///   Lookup and manage remotes in the repository.
         /// </summary>
+        [Obsolete("This property will be removed in the next release. Please use Repository.Network.Remotes instead.")]
         public RemoteCollection Remotes
         {
-            get { return remotes.Value; }
+            get { return Network.Remotes; }
         }
 
         /// <summary>
@@ -248,6 +293,14 @@ namespace LibGit2Sharp
         public TagCollection Tags
         {
             get { return tags; }
+        }
+
+        ///<summary>
+        /// Lookup and enumerate stashes in the repository.
+        ///</summary>
+        public StashCollection Stashes
+        {
+            get { return stashes; }
         }
 
         /// <summary>
@@ -290,10 +343,7 @@ namespace LibGit2Sharp
         /// </summary>
         protected virtual void Dispose(bool disposing)
         {
-            while (toCleanup.Count > 0)
-            {
-                toCleanup.Pop().SafeDispose();
-            }
+            CleanupDisposableDependencies();
         }
 
         #endregion
@@ -361,9 +411,9 @@ namespace LibGit2Sharp
             return Lookup(objectish, type, LookUpOptions.None);
         }
 
-        private string PathFromRevparseSpec(string spec)
+        private static string PathFromRevparseSpec(string spec)
         {
-            if (spec.StartsWith(":/"))
+            if (spec.StartsWith(":/", StringComparison.Ordinal))
             {
                 return null;
             }
@@ -480,11 +530,16 @@ namespace LibGit2Sharp
             if (credentials != null)
             {
                 cloneOpts.CredAcquireCallback =
-                    (out IntPtr cred, IntPtr url, uint types, IntPtr payload) =>
+                    (out IntPtr cred, IntPtr url, IntPtr username_from_url, uint types, IntPtr payload) =>
                     NativeMethods.git_cred_userpass_plaintext_new(out cred, credentials.Username, credentials.Password);
             }
 
             using(Proxy.git_clone(sourceUrl, workdirPath, cloneOpts)) {}
+
+            // To be safe, make sure the credential callback is kept until
+            // alive until at least this point.
+            GC.KeepAlive(cloneOpts.CredAcquireCallback);
+
             return new Repository(workdirPath, options);
         }
 
@@ -532,7 +587,8 @@ namespace LibGit2Sharp
             if (branch.Tip == null)
             {
                 throw new OrphanedHeadException(
-                    string.Format("The tip of branch '{0}' is null. There's nothing to checkout.", branch.Name));
+                    string.Format(CultureInfo.InvariantCulture,
+                    "The tip of branch '{0}' is null. There's nothing to checkout.", branch.Name));
             }
 
             CheckoutTree(branch.Tip.Tree, checkoutOptions, onCheckoutProgress);
@@ -619,13 +675,13 @@ namespace LibGit2Sharp
         /// <returns>The generated <see cref = "Commit" />.</returns>
         public Commit Commit(string message, Signature author, Signature committer, bool amendPreviousCommit = false)
         {
-            if (amendPreviousCommit && Info.IsEmpty)
+            if (amendPreviousCommit && Info.IsHeadOrphaned)
             {
                 throw new LibGit2SharpException("Can not amend anything. The Head doesn't point at any commit.");
             }
 
-            GitOid treeOid = Proxy.git_tree_create_fromindex(Index);
-            var tree = this.Lookup<Tree>(new ObjectId(treeOid));
+            var treeId = Proxy.git_tree_create_fromindex(Index);
+            var tree = this.Lookup<Tree>(treeId);
 
             var parents = RetrieveParentsOfTheCommitBeingCreated(amendPreviousCommit);
 
@@ -643,7 +699,7 @@ namespace LibGit2Sharp
                 return Head.Tip.Parents;
             }
 
-            if (Info.IsEmpty)
+            if (Info.IsHeadOrphaned)
             {
                 return Enumerable.Empty<Commit>();
             }
@@ -671,6 +727,14 @@ namespace LibGit2Sharp
             };
 
             Proxy.git_checkout_index(Handle, new NullGitObjectSafeHandle(), ref options);
+        }
+
+        private void CleanupDisposableDependencies()
+        {
+            while (toCleanup.Count > 0)
+            {
+                toCleanup.Pop().SafeDispose();
+            }
         }
 
         internal T RegisterForCleanup<T>(T disposable) where T : IDisposable
@@ -728,8 +792,18 @@ namespace LibGit2Sharp
             {
                 int i = 0;
                 return Proxy.git_repository_mergehead_foreach(Handle,
-                    commitId => new MergeHead(this, new ObjectId(commitId), i++));
+                    commitId => new MergeHead(this, commitId, i++));
             }
+        }
+
+        internal StringComparer PathComparer
+        {
+            get { return pathCase.Value.Comparer; }
+        }
+
+        internal bool PathStartsWith(string path, string value)
+        {
+            return pathCase.Value.StartsWith(path, value);
         }
 
         private string DebuggerDisplay

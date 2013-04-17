@@ -167,6 +167,18 @@ namespace LibGit2Sharp.Tests
         }
 
         [Fact]
+        public void CanEnumerateLocalConfigContainingAKeyWithNoValue()
+        {
+            using (var repo = new Repository(BareTestRepoPath))
+            {
+                var entry = repo.Config
+                    .Single<ConfigurationEntry<string>>(c => c.Level == ConfigurationLevel.Local && c.Key == "core.pager");
+
+                Assert.Equal(string.Empty, entry.Value);
+            }
+        }
+
+        [Fact]
         public void CanSetBooleanValue()
         {
             var path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);

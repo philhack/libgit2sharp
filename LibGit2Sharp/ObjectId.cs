@@ -98,7 +98,7 @@ namespace LibGit2Sharp
         /// <returns>true if the <paramref name = "sha" /> parameter was converted successfully; otherwise, false.</returns>
         public static bool TryParse(string sha, out ObjectId result)
         {
-            result = BuildFrom(sha, false);
+            result = BuildOidFrom(sha, false);
 
             return result != null;
         }
@@ -111,20 +111,6 @@ namespace LibGit2Sharp
             }
 
             return ToOid(sha);
-        }
-
-        private static ObjectId BuildFrom(string sha, bool shouldThrowIfInvalid)
-        {
-            GitOid? oid = BuildOidFrom(sha, shouldThrowIfInvalid);
-
-            if (!oid.HasValue)
-            {
-                return null;
-            }
-
-            var objectId = new ObjectId(oid.Value);
-
-            return objectId;
         }
 
         /// <summary>
@@ -211,6 +197,16 @@ namespace LibGit2Sharp
         public static bool operator !=(ObjectId left, ObjectId right)
         {
             return !Equals(left, right);
+        }
+
+        /// <summary>
+        ///   Create an <see cref="ObjectId"/> for the given <paramref name="sha"/>.
+        /// </summary>
+        /// <param name="sha">The object SHA.</param>
+        /// <returns>An <see cref="ObjectId"/>, or null if <paramref name="sha"/> is null.</returns>
+        public static explicit operator ObjectId(string sha)
+        {
+            return sha == null ? null : new ObjectId(sha);
         }
 
         private static byte[] BuildReverseHexDigits()

@@ -40,6 +40,8 @@ namespace LibGit2Sharp
 
         internal Remote RemoteForName(string name, bool shouldThrowIfNotFound = true)
         {
+            Ensure.ArgumentNotNull(name, "name");
+
             using (RemoteSafeHandle handle = Proxy.git_remote_load(repository.Handle, name, shouldThrowIfNotFound))
             {
                 return handle == null ? null : Remote.BuildFromPtr(handle, this.repository);
@@ -134,6 +136,16 @@ namespace LibGit2Sharp
         public virtual Remote Create(string name, string url, string fetchRefSpec)
         {
             return Add(name, url);
+        }
+
+        /// <summary>
+        ///   Determines if the proposed remote name is well-formed.
+        /// </summary>
+        /// <param name="name">The name to be checked.</param>
+        /// <returns>true is the name is valid; false otherwise.</returns>
+        public virtual bool IsValidName(string name)
+        {
+            return Proxy.git_remote_is_valid_name(name);
         }
 
         private string DebuggerDisplay

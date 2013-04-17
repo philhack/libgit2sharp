@@ -50,13 +50,6 @@ namespace LibGit2Sharp.Tests.TestHelpers
             StandardTestRepoWorkingDirPath = Path.Combine(ResourcesDirectory.FullName, "testrepo_wd");
             StandardTestRepoPath = Path.Combine(StandardTestRepoWorkingDirPath, ".git");
             MergedTestRepoWorkingDirPath = Path.Combine(ResourcesDirectory.FullName, "mergedrepo_wd");
-
-            // The test repo under source control has its .git folder renamed to dot_git to avoid confusing git,
-            // so we need to rename it back to .git in our copy under the target folder
-            string tempDotGit = Path.Combine(StandardTestRepoWorkingDirPath, "dot_git");
-            Directory.Move(tempDotGit, StandardTestRepoPath);
-            tempDotGit = Path.Combine(MergedTestRepoWorkingDirPath, "dot_git");
-            Directory.Move(tempDotGit, Path.Combine(MergedTestRepoWorkingDirPath, ".git"));
         }
 
         protected void CreateCorruptedDeadBeefHead(string repoPath)
@@ -93,6 +86,10 @@ namespace LibGit2Sharp.Tests.TestHelpers
 
         public void Dispose()
         {
+#if LEAKS
+            GC.Collect();
+#endif
+
             foreach (string directory in directories)
             {
                 DirectoryHelper.DeleteDirectory(directory);
@@ -114,6 +111,18 @@ namespace LibGit2Sharp.Tests.TestHelpers
             var text = File.ReadAllText(configFilePath);
             var r = new Regex(regex, RegexOptions.Multiline).Match(text);
             Assert.True(r.Success, text);
+        }
+
+        protected static void SetIgnoreCaseOrSkip(string path, bool ignorecase)
+        {
+            var canIgnoreCase = Directory.Exists(path.ToUpperInvariant()) && Directory.Exists(path.ToLowerInvariant());
+            if (!canIgnoreCase && ignorecase)
+                throw new SkipException("Skipping 'ignorecase = true' test on case-sensitive file system.");
+
+            using (var repo = new Repository(path))
+            {
+                repo.Config.Set("core.ignorecase", ignorecase);
+            }
         }
 
         public RepositoryOptions BuildFakeConfigs(SelfCleaningDirectory scd)

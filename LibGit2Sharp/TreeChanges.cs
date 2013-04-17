@@ -21,14 +21,13 @@ namespace LibGit2Sharp
         private readonly List<TreeEntryChanges> added = new List<TreeEntryChanges>();
         private readonly List<TreeEntryChanges> deleted = new List<TreeEntryChanges>();
         private readonly List<TreeEntryChanges> modified = new List<TreeEntryChanges>();
+        private readonly List<TreeEntryChanges> typeChanged = new List<TreeEntryChanges>();
         private int linesAdded;
         private int linesDeleted;
 
         private readonly IDictionary<ChangeKind, Action<TreeChanges, TreeEntryChanges>> fileDispatcher = Build();
 
         private readonly StringBuilder fullPatchBuilder = new StringBuilder();
-        private static readonly Comparison<TreeEntryChanges> ordinalComparer =
-            (one, other) => string.CompareOrdinal(one.Path, other.Path);
 
         private static IDictionary<ChangeKind, Action<TreeChanges, TreeEntryChanges>> Build()
         {
@@ -37,6 +36,7 @@ namespace LibGit2Sharp
                            { ChangeKind.Modified, (de, d) => de.modified.Add(d) },
                            { ChangeKind.Deleted, (de, d) => de.deleted.Add(d) },
                            { ChangeKind.Added, (de, d) => de.added.Add(d) },
+                           { ChangeKind.TypeChanged, (de, d) => de.typeChanged.Add(d) },
                        };
         }
 
@@ -49,9 +49,6 @@ namespace LibGit2Sharp
         internal TreeChanges(DiffListSafeHandle diff)
         {
             Proxy.git_diff_print_patch(diff, PrintCallBack);
-            added.Sort(ordinalComparer);
-            deleted.Sort(ordinalComparer);
-            modified.Sort(ordinalComparer);
         }
 
         private int PrintCallBack(GitDiffDelta delta, GitDiffRange range, GitDiffLineOrigin lineorigin, IntPtr content, UIntPtr contentlen, IntPtr payload)
@@ -93,8 +90,8 @@ namespace LibGit2Sharp
             var oldFilePath = FilePathMarshaler.FromNative(delta.OldFile.Path);
             var newMode = (Mode)delta.NewFile.Mode;
             var oldMode = (Mode)delta.OldFile.Mode;
-            var newOid = new ObjectId(delta.NewFile.Oid);
-            var oldOid = new ObjectId(delta.OldFile.Oid);
+            var newOid = delta.NewFile.Oid;
+            var oldOid = delta.OldFile.Oid;
 
             if (delta.Status == ChangeKind.Untracked)
             {
@@ -177,6 +174,14 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
+        ///   List of <see cref = "TreeEntryChanges"/> which type have been changed.
+        /// </summary>
+        public virtual IEnumerable<TreeEntryChanges> TypeChanged
+        {
+            get { return typeChanged; }
+        }
+
+        /// <summary>
         ///   The total number of lines added in this diff.
         /// </summary>
         public virtual int LinesAdded
@@ -205,8 +210,9 @@ namespace LibGit2Sharp
             get
             {
                 return string.Format(CultureInfo.InvariantCulture,
-                    "Added: {0}, Deleted: {1}, Modified: {2}",
-                    Added.Count(), Deleted.Count(), Modified.Count());
+                    "+{0} ~{2} -{1} \u00B1{3}",
+                    Added.Count(), Deleted.Count(),
+                    Modified.Count(), TypeChanged.Count());
             }
         }
     }

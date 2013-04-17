@@ -33,6 +33,7 @@ namespace LibGit2Sharp
         /// <summary>
         ///   Lookup and manage remotes in the repository.
         /// </summary>
+        [Obsolete("This property will be removed in the next release. Please use Repository.Network.Remotes instead.")]
         RemoteCollection Remotes { get; }
 
         /// <summary>
@@ -141,5 +142,10 @@ namespace LibGit2Sharp
         ///   Gets the references to the tips that are currently being merged.
         /// </summary>
         IEnumerable<MergeHead> MergeHeads { get; }
+
+        /// <summary>
+        ///   Provides access to network functionality for a repository.
+        /// </summary>
+        Network Network { get; }
     }
 }
