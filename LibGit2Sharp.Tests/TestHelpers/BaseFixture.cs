@@ -69,14 +69,40 @@ namespace LibGit2Sharp.Tests.TestHelpers
             return new SelfCleaningDirectory(this, path);
         }
 
-        protected TemporaryCloneOfTestRepo BuildTemporaryCloneOfTestRepo()
+        protected string CloneBareTestRepo()
         {
-            return BuildTemporaryCloneOfTestRepo(BareTestRepoPath);
+            return Clone(BareTestRepoPath);
         }
 
-        protected TemporaryCloneOfTestRepo BuildTemporaryCloneOfTestRepo(string path)
+        protected string CloneStandardTestRepo()
         {
-            return new TemporaryCloneOfTestRepo(this, path);
+            return Clone(StandardTestRepoWorkingDirPath);
+        }
+
+        public string CloneSubmoduleTestRepo()
+        {
+            var submodule = Path.Combine(ResourcesDirectory.FullName, "submodule_wd");
+            var submoduleTarget = Path.Combine(ResourcesDirectory.FullName, "submodule_target_wd");
+            return Clone(submodule, submoduleTarget);
+        }
+
+        private string Clone(string sourceDirectoryPath, params string[] additionalSourcePaths)
+        {
+            var scd = BuildSelfCleaningDirectory();
+            var source = new DirectoryInfo(sourceDirectoryPath);
+
+            var clonePath = Path.Combine(scd.DirectoryPath, source.Name);
+            DirectoryHelper.CopyFilesRecursively(source, new DirectoryInfo(clonePath));
+
+            foreach (var additionalPath in additionalSourcePaths)
+            {
+                var additional = new DirectoryInfo(additionalPath);
+                var targetForAdditional = Path.Combine(scd.DirectoryPath, additional.Name);
+
+                DirectoryHelper.CopyFilesRecursively(additional, new DirectoryInfo(targetForAdditional));
+            }
+
+            return clonePath;
         }
 
         public void Register(string directoryPath)
@@ -164,6 +190,19 @@ namespace LibGit2Sharp.Tests.TestHelpers
                 XdgConfigurationLocation = xdgLocation,
                 SystemConfigurationLocation = systemLocation,
             };
+        }
+
+        protected void Touch(string parent, string file, string content = null)
+        {
+            var lastIndex = file.LastIndexOf('/');
+            if (lastIndex > 0)
+            {
+                var parents = file.Substring(0, lastIndex);
+                Directory.CreateDirectory(Path.Combine(parent, parents));
+            }
+
+            var filePath = Path.Combine(parent, file);
+            File.AppendAllText(filePath, content ?? string.Empty, Encoding.ASCII);
         }
     }
 }

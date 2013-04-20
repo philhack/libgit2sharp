@@ -31,12 +31,6 @@ namespace LibGit2Sharp
         ReferenceCollection Refs { get; }
 
         /// <summary>
-        ///   Lookup and manage remotes in the repository.
-        /// </summary>
-        [Obsolete("This property will be removed in the next release. Please use Repository.Network.Remotes instead.")]
-        RemoteCollection Remotes { get; }
-
-        /// <summary>
         ///   Lookup and enumerate commits in the repository.
         ///   Iterating this collection directly starts walking from the HEAD.
         /// </summary>
@@ -71,6 +65,11 @@ namespace LibGit2Sharp
         ///   Lookup notes in the repository.
         /// </summary>
         NoteCollection Notes { get; }
+
+        /// <summary>
+        ///   Submodules in the repository.
+        /// </summary>
+        SubmoduleCollection Submodules { get; }
 
         /// <summary>
         ///   Checkout the specified <see cref = "Branch" />.
@@ -131,7 +130,11 @@ namespace LibGit2Sharp
         /// </summary>
         /// <param name = "commit">The target commit object.</param>
         /// <param name = "paths">The list of paths (either files or directories) that should be considered.</param>
-        void Reset(Commit commit, IEnumerable<string> paths = null);
+        /// <param name = "explicitPathsOptions">
+        ///   If set, the passed <paramref name="paths"/> will be treated as explicit paths.
+        ///   Use these options to determine how unmatched explicit paths should be handled.
+        /// </param>
+        void Reset(Commit commit, IEnumerable<string> paths = null, ExplicitPathsOptions explicitPathsOptions = null);
 
         /// <summary>
         /// Clean the working tree by removing files that are not under version control.

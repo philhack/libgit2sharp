@@ -25,8 +25,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanCorrectlyCountCommitsWhenSwitchingToAnotherBranch()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 // Hard reset and then remove untracked files
                 repo.Reset(ResetOptions.Hard);
@@ -60,8 +60,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanEnumerateCommitsInDetachedHeadState()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo();
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneBareTestRepo();
+            using (var repo = new Repository(path))
             {
                 ObjectId parentOfHead = repo.Head.Tip.Parents.First().Id;
 
@@ -110,8 +110,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void QueryingTheCommitHistoryFromACorruptedReferenceThrows()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo();
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneBareTestRepo();
+            using (var repo = new Repository(path))
             {
                 CreateCorruptedDeadBeefHead(repo.Info.Path);
 
@@ -226,8 +226,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanEnumerateFromDetachedHead()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            using (var repoClone = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repoClone = new Repository(path))
             {
                 // Hard reset and then remove untracked files
                 repoClone.Reset(ResetOptions.Hard);
@@ -371,9 +371,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanEnumerateCommitsFromATagWhichPointsToATree()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(BareTestRepoPath);
-
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneBareTestRepo();
+            using (var repo = new Repository(path))
             {
                 string headTreeSha = repo.Head.Tip.Tree.Sha;
 
@@ -533,8 +532,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CommitParentsAreMergeHeads()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 repo.Reset(ResetOptions.Hard, "c47800");
 
@@ -615,13 +614,27 @@ namespace LibGit2Sharp.Tests
                 Assert.Null(repo.Head[relativeFilepath]);
 
                 var author = DummySignature;
-                Commit commit = repo.Commit("Initial egotistic commit", author, author);
+                const string commitMessage = "Initial egotistic commit";
+                Commit commit = repo.Commit(commitMessage, author, author);
 
                 AssertBlobContent(repo.Head[relativeFilepath], "nulltoken\n");
                 AssertBlobContent(commit[relativeFilepath], "nulltoken\n");
 
                 Assert.Equal(0, commit.Parents.Count());
                 Assert.False(repo.Info.IsHeadOrphaned);
+
+                // Assert a reflog entry is created on HEAD
+                Assert.Equal(1, repo.Refs.Log("HEAD").Count());
+                var reflogEntry = repo.Refs.Log("HEAD").First();
+                Assert.Equal(author, reflogEntry.Commiter);
+                Assert.Equal(commit.Id, reflogEntry.To);
+                Assert.Equal(ObjectId.Zero, reflogEntry.From);
+                Assert.Equal(string.Format("commit (initial): {0}", commitMessage), reflogEntry.Message);
+
+                // Assert a reflog entry is created on HEAD target
+                var targetCanonicalName = repo.Refs.Head.TargetIdentifier;
+                Assert.Equal(1, repo.Refs.Log(targetCanonicalName).Count());
+                Assert.Equal(commit.Id, repo.Refs.Log(targetCanonicalName).First().To);
 
                 File.WriteAllText(filePath, "nulltoken commits!\n");
                 repo.Index.Stage(relativeFilepath);
@@ -634,6 +647,10 @@ namespace LibGit2Sharp.Tests
 
                 Assert.Equal(1, commit2.Parents.Count());
                 Assert.Equal(commit.Id, commit2.Parents.First().Id);
+
+                // Assert the reflog is shifted
+                Assert.Equal(2, repo.Refs.Log("HEAD").Count());
+                Assert.Equal(reflogEntry.To, repo.Refs.Log("HEAD").First().From);
 
                 Branch firstCommitBranch = repo.CreateBranch("davidfowl-rules", commit);
                 repo.Checkout(firstCommitBranch);
@@ -722,8 +739,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanAmendACommitWithMoreThanOneParent()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 var mergedCommit = repo.Lookup<Commit>("be3563a");
                 Assert.NotNull(mergedCommit);
@@ -732,10 +749,17 @@ namespace LibGit2Sharp.Tests
                 repo.Reset(ResetOptions.Soft, mergedCommit.Sha);
 
                 CreateAndStageANewFile(repo);
+                const string commitMessage = "I'm rewriting the history!";
 
-                Commit amendedCommit = repo.Commit("I'm rewriting the history!", DummySignature, DummySignature, true);
+                Commit amendedCommit = repo.Commit(commitMessage, DummySignature, DummySignature, true);
 
                 AssertCommitHasBeenAmended(repo, amendedCommit, mergedCommit);
+
+                // Assert a reflog entry is created
+                var reflogEntry = repo.Refs.Log("HEAD").First();
+                Assert.Equal(amendedCommit.Committer, reflogEntry.Commiter);
+                Assert.Equal(amendedCommit.Id, reflogEntry.To);
+                Assert.Equal(string.Format("commit (amend): {0}", commitMessage), reflogEntry.Message);
             }
         }
 
@@ -764,15 +788,15 @@ namespace LibGit2Sharp.Tests
 
             using (Repository repo = Repository.Init(scd.DirectoryPath))
             {
-                Assert.Throws<LibGit2SharpException>(() => repo.Commit("I can not amend anything !:(", DummySignature, DummySignature, true));
+                Assert.Throws<OrphanedHeadException>(() => repo.Commit("I can not amend anything !:(", DummySignature, DummySignature, true));
             }
         }
 
         [Fact]
         public void CanRetrieveChildrenOfASpecificCommit()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 const string parentSha = "5b5b025afb0b4c913b4c338a42934a3863bf3644";
 
@@ -803,8 +827,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanCorrectlyDistinguishAuthorFromCommitter()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 var author = new Signature("Wilbert van Dolleweerd", "getit@xs4all.nl",
                                            Epoch.ToDateTimeOffset(1244187936, 120));

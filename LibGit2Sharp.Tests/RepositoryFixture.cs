@@ -47,8 +47,14 @@ namespace LibGit2Sharp.Tests
         {
             SelfCleaningDirectory scd = BuildSelfCleaningDirectory();
 
+            Assert.False(Repository.IsValid(scd.DirectoryPath));
+
             using (var repo = Repository.Init(scd.DirectoryPath))
             {
+                Assert.True(Repository.IsValid(scd.DirectoryPath));
+                Assert.True(Repository.IsValid(repo.Info.WorkingDirectory));
+                Assert.True(Repository.IsValid(repo.Info.Path));
+
                 string dir = repo.Info.Path;
                 Assert.True(Path.IsPathRooted(dir));
                 Assert.True(Directory.Exists(dir));
@@ -457,8 +463,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanDetectIfTheHeadIsOrphaned()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 string branchName = repo.Head.CanonicalName;
 
@@ -475,8 +481,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void QueryingTheRemoteForADetachedHeadBranchReturnsNull()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            using (var repo = new Repository(path.DirectoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 repo.Checkout(repo.Head.Tip.Sha, CheckoutOptions.Force, null);
                 Branch trackLocal = repo.Head;

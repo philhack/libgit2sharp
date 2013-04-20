@@ -78,7 +78,7 @@ namespace LibGit2Sharp
             Ensure.ArgumentNotNullOrEmptyString(name, "name");
             Ensure.ArgumentNotNull(targetId, "targetId");
 
-            using (ReferenceSafeHandle handle = Proxy.git_reference_create_oid(repo.Handle, name, targetId, allowOverwrite))
+            using (ReferenceSafeHandle handle = Proxy.git_reference_create(repo.Handle, name, targetId, allowOverwrite))
             {
                 return (DirectReference)Reference.BuildFromPtr<Reference>(handle, repo);
             }
@@ -96,23 +96,10 @@ namespace LibGit2Sharp
             Ensure.ArgumentNotNullOrEmptyString(name, "name");
             Ensure.ArgumentNotNull(targetRef, "targetRef");
 
-            using (ReferenceSafeHandle handle = Proxy.git_reference_create_symbolic(repo.Handle, name, targetRef.CanonicalName, allowOverwrite))
+            using (ReferenceSafeHandle handle = Proxy.git_reference_symbolic_create(repo.Handle, name, targetRef.CanonicalName, allowOverwrite))
             {
                 return (SymbolicReference)Reference.BuildFromPtr<Reference>(handle, repo);
             }
-        }
-
-        /// <summary>
-        ///   Creates a direct or symbolic reference with the specified name and target
-        /// </summary>
-        /// <param name = "name">The name of the reference to create.</param>
-        /// <param name = "target">The target which can be either a sha or the canonical name of another reference.</param>
-        /// <param name = "allowOverwrite">True to allow silent overwriting a potentially existing reference, false otherwise.</param>
-        /// <returns>A new <see cref = "Reference" />.</returns>
-        [Obsolete("This method will be removed in the next release. Please use Add() instead.")]
-        public virtual Reference Create(string name, string target, bool allowOverwrite = false)
-        {
-            return this.Add(name, target, allowOverwrite);
         }
 
         /// <summary>
@@ -127,16 +114,6 @@ namespace LibGit2Sharp
             {
                 Proxy.git_reference_delete(handle);
             }
-        }
-
-        /// <summary>
-        ///   Delete a reference with the specified name
-        /// </summary>
-        /// <param name = "name">The name of the reference to delete.</param>
-        [Obsolete("This method will be removed in the next release. Please use Remove() instead.")]
-        public virtual void Delete(string name)
-        {
-            this.Remove(name);
         }
 
         /// <summary>
@@ -214,6 +191,11 @@ namespace LibGit2Sharp
                     return Add("HEAD", target as DirectReference, true);
                 }
 
+                if (target is SymbolicReference)
+                {
+                    return Add("HEAD", target as SymbolicReference, true);
+                }
+
                 throw new ArgumentException(string.Format(CultureInfo.InvariantCulture,
                     "'{0}' is not a valid target type.", typeof(T)));
             }
@@ -284,6 +266,30 @@ namespace LibGit2Sharp
                 return string.Format(CultureInfo.InvariantCulture,
                     "Count = {0}", this.Count());
             }
+        }
+
+        /// <summary>
+        ///   Returns as a <see cref="ReflogCollection"/> the reflog of the <see cref="Reference"/> named <paramref name="canonicalName"/>
+        /// </summary>
+        /// <param name="canonicalName">The canonical name of the reference</param>
+        /// <returns>a <see cref="ReflogCollection"/>, enumerable of <see cref="ReflogEntry"/></returns>
+        public virtual ReflogCollection Log(string canonicalName)
+        {
+            Ensure.ArgumentNotNullOrEmptyString(canonicalName, "canonicalName");
+
+            return new ReflogCollection(repo, canonicalName);
+        }
+
+        /// <summary>
+        ///   Returns as a <see cref="ReflogCollection"/> the reflog of the <see cref="Reference"/> <paramref name="reference"/>
+        /// </summary>
+        /// <param name="reference">The reference</param>
+        /// <returns>a <see cref="ReflogCollection"/>, enumerable of <see cref="ReflogEntry"/></returns>
+        public virtual ReflogCollection Log(Reference reference)
+        {
+            Ensure.ArgumentNotNull(reference, "reference");
+
+            return new ReflogCollection(repo, reference.CanonicalName);
         }
     }
 }

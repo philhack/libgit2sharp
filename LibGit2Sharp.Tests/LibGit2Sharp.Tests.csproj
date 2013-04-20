@@ -59,10 +59,14 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CheckoutFixture.cs" />
+    <Compile Include="RemoteFixture.cs" />
+    <Compile Include="PushFixture.cs" />
+    <Compile Include="ReflogFixture.cs" />
     <Compile Include="StageFixture.cs" />
     <Compile Include="StashFixture.cs" />
     <Compile Include="CloneFixture.cs" />
     <Compile Include="ConflictFixture.cs" />
+    <Compile Include="SubmoduleFixture.cs" />
     <Compile Include="IgnoreFixture.cs" />
     <Compile Include="FetchHeadFixture.cs" />
     <Compile Include="MergeFixture.cs" />
@@ -84,7 +88,7 @@
     <Compile Include="RepositoryOptionsFixture.cs" />
     <Compile Include="ResetHeadFixture.cs" />
     <Compile Include="LazyFixture.cs" />
-    <Compile Include="RemoteFixture.cs" />
+    <Compile Include="FetchFixture.cs" />
     <Compile Include="ResetIndexFixture.cs" />
     <Compile Include="StatusFixture.cs" />
     <Compile Include="TestHelpers\BaseFixture.cs" />
@@ -106,7 +110,6 @@
     <Compile Include="TestHelpers\SelfCleaningDirectory.cs" />
     <Compile Include="TestHelpers\SignatureExtensions.cs" />
     <Compile Include="TestHelpers\SkippableFactAttribute.cs" />
-    <Compile Include="TestHelpers\TemporaryCloneOfTestRepo.cs" />
     <Compile Include="TreeDefinitionFixture.cs" />
     <Compile Include="TreeFixture.cs" />
     <Compile Include="TupleFixture.cs" />

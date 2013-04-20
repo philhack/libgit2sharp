@@ -95,30 +95,6 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
-        ///   Gets the number of commits that exist in this local branch but don't exist in the tracked one.
-        ///   <para>
-        ///     This property will return null if there is no tracked branch linked to this local branch.
-        ///   </para>
-        /// </summary>
-        [Obsolete("This property will be removed in the next release. Please use TrackingDetails.AheadBy instead.")]
-        public virtual int? AheadBy
-        {
-            get { return TrackingDetails.AheadBy; }
-        }
-
-        /// <summary>
-        ///   Gets the number of commits that exist in the tracked branch but don't exist in this local one.
-        ///   <para>
-        ///     This property will return null if there is no tracked branch linked to this local branch.
-        ///   </para>
-        /// </summary>
-        [Obsolete("This property will be removed in the next release. Please use TrackingDetails.BehindBy instead.")]
-        public virtual int? BehindBy
-        {
-            get { return TrackingDetails.BehindBy; }
-        }
-
-        /// <summary>
         ///   Gets additional information about the tracked branch.
         /// </summary>
         public virtual BranchTrackingDetails TrackingDetails
@@ -154,6 +130,26 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
+        ///   Gets the configured canonical name of the upstream branch.
+        ///   <para>
+        ///     This is the upstream reference to which this branch will be pushed.
+        ///     It corresponds to the "branch.branch_name.merge" property of the config file.
+        ///   </para>
+        /// </summary>
+        public virtual string UpstreamBranchCanonicalName
+        {
+            get
+            {
+                if (IsRemote)
+                {
+                    return Remote.FetchSpecTransformToSource(CanonicalName);
+                }
+
+                return UpstreamBranchCanonicalNameFromLocalBranch();
+            }
+        }
+
+        /// <summary>
         ///   Gets the configured <see cref="Remote"/> to fetch from and push to.
         /// </summary>
         public virtual Remote Remote
@@ -178,6 +174,18 @@ namespace LibGit2Sharp
 
                 return repo.Network.Remotes[remoteName];
             }
+        }
+
+        private string UpstreamBranchCanonicalNameFromLocalBranch()
+        {
+            ConfigurationEntry<string> mergeRefEntry = repo.Config.Get<string>("branch", Name, "merge");
+
+            if (mergeRefEntry == null)
+            {
+                return null;
+            }
+
+            return mergeRefEntry.Value;
         }
 
         private string RemoteNameFromLocalBranch()

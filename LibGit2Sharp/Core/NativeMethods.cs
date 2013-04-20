@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -700,10 +700,54 @@ namespace LibGit2Sharp.Core
         internal static extern GitReferenceType git_reference_type(ReferenceSafeHandle reference);
 
         [DllImport(libgit2)]
+        internal static extern void git_reflog_free(
+            IntPtr reflog);
+
+        [DllImport(libgit2)]
+        internal static extern int git_reflog_read(
+            out ReflogSafeHandle ref_out,
+            ReferenceSafeHandle reference);
+
+        [DllImport(libgit2)]
+        internal static extern UIntPtr git_reflog_entrycount
+            (ReflogSafeHandle reflog);
+
+        [DllImport(libgit2)]
+        internal static extern ReflogEntrySafeHandle git_reflog_entry_byindex(
+            ReflogSafeHandle reflog,
+            UIntPtr idx);
+
+        [DllImport(libgit2)]
+        internal static extern OidSafeHandle git_reflog_entry_id_old(
+            SafeHandle entry);
+
+        [DllImport(libgit2)]
+        internal static extern OidSafeHandle git_reflog_entry_id_new(
+            SafeHandle entry);
+
+        [DllImport(libgit2)]
+        internal static extern IntPtr git_reflog_entry_committer(
+            SafeHandle entry);
+
+        [DllImport(libgit2)]
+        internal static extern int git_reflog_append(
+            ReflogSafeHandle reflog,
+            ref GitOid id,
+            SignatureSafeHandle committer,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string msg);
+
+        [DllImport(libgit2)]
+        internal static extern int git_reflog_write(ReflogSafeHandle reflog);
+
+        [DllImport(libgit2)]
+        [return: MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8NoCleanupMarshaler))]
+        internal static extern string git_reflog_entry_message(SafeHandle entry);
+
+        [DllImport(libgit2)]
         internal static extern int git_refspec_rtransform(
             byte[] target,
             UIntPtr outlen,
-            GitFetchSpecHandle refSpec,
+            GitRefSpecHandle refSpec,
             [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string name);
 
         [DllImport(libgit2)]
@@ -744,7 +788,7 @@ namespace LibGit2Sharp.Core
         internal static extern int git_remote_ls(RemoteSafeHandle remote, git_headlist_cb headlist_cb, IntPtr payload);
 
         [DllImport(libgit2)]
-        internal static extern GitFetchSpecHandle git_remote_fetchspec(RemoteSafeHandle remote);
+        internal static extern GitRefSpecHandle git_remote_fetchspec(RemoteSafeHandle remote);
 
         [DllImport(libgit2)]
         [return: MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8NoCleanupMarshaler))]
@@ -862,6 +906,13 @@ namespace LibGit2Sharp.Core
             [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath path);
 
         [DllImport(libgit2)]
+        internal static extern int git_repository_open_ext(
+            NullRepositorySafeHandle repository,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath path,
+            RepositoryOpenFlags flags,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath ceilingDirs);
+
+        [DllImport(libgit2)]
         [return: MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathNoCleanupMarshaler))]
         internal static extern FilePath git_repository_path(RepositorySafeHandle repository);
 
@@ -969,6 +1020,71 @@ namespace LibGit2Sharp.Core
 
         [DllImport(libgit2)]
         internal static extern int git_status_foreach(RepositorySafeHandle repo, git_status_cb cb, IntPtr payload);
+
+        [DllImport(libgit2)]
+        internal static extern int git_submodule_lookup(
+            out SubmoduleSafeHandle reference,
+            RepositorySafeHandle repo,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string name);
+
+        internal delegate int submodule_callback(
+            IntPtr sm,
+            IntPtr name,
+            IntPtr payload);
+
+        [DllImport(libgit2)]
+        internal static extern int git_submodule_foreach(
+            RepositorySafeHandle repo,
+            submodule_callback callback,
+            IntPtr payload);
+
+        [DllImport(libgit2)]
+        internal static extern int git_submodule_add_to_index(
+            SubmoduleSafeHandle submodule,
+            bool write_index);
+
+        [DllImport(libgit2)]
+        internal static extern int git_submodule_save(
+            SubmoduleSafeHandle submodule);
+
+        [DllImport(libgit2)]
+        [return: MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8NoCleanupMarshaler))]
+        internal static extern string git_submodule_path(
+            SubmoduleSafeHandle submodule);
+
+        [DllImport(libgit2)]
+        [return: MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8NoCleanupMarshaler))]
+        internal static extern string git_submodule_url(
+            SubmoduleSafeHandle submodule);
+
+        [DllImport(libgit2)]
+        internal static extern OidSafeHandle git_submodule_index_id(
+            SubmoduleSafeHandle submodule);
+
+        [DllImport(libgit2)]
+        internal static extern OidSafeHandle git_submodule_head_id(
+            SubmoduleSafeHandle submodule);
+
+        [DllImport(libgit2)]
+        internal static extern OidSafeHandle git_submodule_wd_id(
+            SubmoduleSafeHandle submodule);
+
+        [DllImport(libgit2)]
+        internal static extern SubmoduleIgnore git_submodule_ignore(
+            SubmoduleSafeHandle submodule);
+
+        [DllImport(libgit2)]
+        internal static extern SubmoduleUpdate git_submodule_update(
+            SubmoduleSafeHandle submodule);
+
+        [DllImport(libgit2)]
+        internal static extern bool git_submodule_fetch_recurse_submodules(
+            SubmoduleSafeHandle submodule);
+
+        [DllImport(libgit2)]
+        internal static extern int git_submodule_status(
+            out SubmoduleStatus status,
+            SubmoduleSafeHandle submodule);
 
         [DllImport(libgit2)]
         internal static extern int git_tag_create(

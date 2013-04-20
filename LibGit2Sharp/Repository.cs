@@ -36,6 +36,7 @@ namespace LibGit2Sharp
         private readonly Lazy<Network> network;
         private readonly Stack<IDisposable> toCleanup = new Stack<IDisposable>();
         private readonly Ignore ignore;
+        private readonly SubmoduleCollection submodules;
         private static readonly Lazy<string> versionRetriever = new Lazy<string>(RetrieveVersion);
         private readonly Lazy<PathCase> pathCase;
 
@@ -118,6 +119,7 @@ namespace LibGit2Sharp
                 ignore = new Ignore(this);
                 network = new Lazy<Network>(() => new Network(this));
                 pathCase = new Lazy<PathCase>(() => new PathCase(this));
+                submodules = new SubmoduleCollection(this);
 
                 EagerlyLoadTheConfigIfAnyPathHaveBeenPassed(options);
             }
@@ -126,6 +128,30 @@ namespace LibGit2Sharp
                 CleanupDisposableDependencies();
                 throw;
             }
+        }
+
+        /// <summary>
+        ///   Check if parameter <paramref name="path"/> leads to a valid git repository.
+        /// </summary>
+        /// <param name = "path">
+        ///   The path to the git repository to check, can be either the path to the git directory (for non-bare repositories this
+        ///   would be the ".git" folder inside the working directory) or the path to the working directory.
+        /// </param>
+        /// <returns>True if a repository can be resolved through this path; false otherwise</returns>
+        static public bool IsValid(string path)
+        {
+            Ensure.ArgumentNotNullOrEmptyString(path, "path");
+
+            try
+            {
+                Proxy.git_repository_open_ext(path, RepositoryOpenFlags.NoSearch, null);
+            }
+            catch (RepositoryNotFoundException)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private void EagerlyLoadTheConfigIfAnyPathHaveBeenPassed(RepositoryOptions options)
@@ -262,15 +288,6 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
-        ///   Lookup and manage remotes in the repository.
-        /// </summary>
-        [Obsolete("This property will be removed in the next release. Please use Repository.Network.Remotes instead.")]
-        public RemoteCollection Remotes
-        {
-            get { return Network.Remotes; }
-        }
-
-        /// <summary>
         ///   Lookup and enumerate commits in the repository.
         ///   Iterating this collection directly starts walking from the HEAD.
         /// </summary>
@@ -325,6 +342,14 @@ namespace LibGit2Sharp
         public NoteCollection Notes
         {
             get { return notes; }
+        }
+
+        /// <summary>
+        ///   Submodules in the repository.
+        /// </summary>
+        public SubmoduleCollection Submodules
+        {
+            get { return submodules; }
         }
 
         #region IDisposable Members
@@ -650,7 +675,11 @@ namespace LibGit2Sharp
         /// </summary>
         /// <param name = "commit">The target commit object.</param>
         /// <param name = "paths">The list of paths (either files or directories) that should be considered.</param>
-        public void Reset(Commit commit, IEnumerable<string> paths = null)
+        /// <param name = "explicitPathsOptions">
+        ///   If set, the passed <paramref name="paths"/> will be treated as explicit paths.
+        ///   Use these options to determine how unmatched explicit paths should be handled.
+        /// </param>
+        public void Reset(Commit commit, IEnumerable<string> paths = null, ExplicitPathsOptions explicitPathsOptions = null)
         {
             if (Info.IsBare)
             {
@@ -659,7 +688,7 @@ namespace LibGit2Sharp
 
             Ensure.ArgumentNotNull(commit, "commit");
 
-            TreeChanges changes = Diff.Compare(commit.Tree, DiffTargets.Index, paths);
+            TreeChanges changes = Diff.Compare(commit.Tree, DiffTargets.Index, paths, explicitPathsOptions);
             Index.Reset(changes);
         }
 
@@ -675,9 +704,11 @@ namespace LibGit2Sharp
         /// <returns>The generated <see cref = "Commit" />.</returns>
         public Commit Commit(string message, Signature author, Signature committer, bool amendPreviousCommit = false)
         {
-            if (amendPreviousCommit && Info.IsHeadOrphaned)
+            bool isHeadOrphaned = Info.IsHeadOrphaned;
+
+            if (amendPreviousCommit && isHeadOrphaned)
             {
-                throw new LibGit2SharpException("Can not amend anything. The Head doesn't point at any commit.");
+                throw new OrphanedHeadException("Can not amend anything. The Head doesn't point at any commit.");
             }
 
             var treeId = Proxy.git_tree_create_fromindex(Index);
@@ -689,7 +720,37 @@ namespace LibGit2Sharp
 
             Proxy.git_repository_merge_cleanup(handle);
 
+            // Insert reflog entry
+            LogCommit(result, amendPreviousCommit, isHeadOrphaned);
+
             return result;
+        }
+
+        private void LogCommit(Commit commit, bool amendPreviousCommit, bool isHeadOrphaned)
+        {
+            // Compute reflog message
+            string reflogMessage = "commit";
+            if (isHeadOrphaned)
+            {
+                reflogMessage += " (initial)";
+            }
+            else if(amendPreviousCommit)
+            {
+                reflogMessage += " (amend)";
+            }
+
+            reflogMessage = string.Format("{0}: {1}", reflogMessage, commit.Message);
+
+            var headRef = Refs.Head;
+
+            // in case HEAD targets a symbolic reference, log commit on the targeted direct reference
+            if(headRef is SymbolicReference)
+            {
+                Refs.Log(headRef.ResolveToDirectReference()).Append(commit.Id, commit.Committer, reflogMessage);
+            }
+
+            // Log commit on HEAD
+            Refs.Log(headRef).Append(commit.Id, commit.Committer, reflogMessage);
         }
 
         private IEnumerable<Commit> RetrieveParentsOfTheCommitBeingCreated(bool amendPreviousCommit)

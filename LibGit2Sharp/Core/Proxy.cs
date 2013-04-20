@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -1100,7 +1100,7 @@ namespace LibGit2Sharp.Core
 
         #region git_reference_
 
-        public static ReferenceSafeHandle git_reference_create_oid(RepositorySafeHandle repo, string name, ObjectId targetId, bool allowOverwrite)
+        public static ReferenceSafeHandle git_reference_create(RepositorySafeHandle repo, string name, ObjectId targetId, bool allowOverwrite)
         {
             using (ThreadAffinity())
             {
@@ -1114,7 +1114,7 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        public static ReferenceSafeHandle git_reference_create_symbolic(RepositorySafeHandle repo, string name, string target, bool allowOverwrite)
+        public static ReferenceSafeHandle git_reference_symbolic_create(RepositorySafeHandle repo, string name, string target, bool allowOverwrite)
         {
             using (ThreadAffinity())
             {
@@ -1192,7 +1192,7 @@ namespace LibGit2Sharp.Core
             return NativeMethods.git_reference_name(reference);
         }
 
-        public static ObjectId git_reference_oid(ReferenceSafeHandle reference)
+        public static ObjectId git_reference_target(ReferenceSafeHandle reference)
         {
             return NativeMethods.git_reference_target(reference).MarshalAsObjectId();
         }
@@ -1255,7 +1255,7 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        public static string git_reference_target(ReferenceSafeHandle reference)
+        public static string git_reference_symbolic_target(ReferenceSafeHandle reference)
         {
             return NativeMethods.git_reference_symbolic_target(reference);
         }
@@ -1267,9 +1267,76 @@ namespace LibGit2Sharp.Core
 
         #endregion
 
+        #region git_reflog_
+
+        public static void git_reflog_free(IntPtr reflog)
+        {
+            NativeMethods.git_reflog_free(reflog);
+        }
+
+        public static ReflogSafeHandle git_reflog_read(ReferenceSafeHandle reference)
+        {
+            using (ThreadAffinity())
+            {
+                ReflogSafeHandle reflog_out;
+
+                int res = NativeMethods.git_reflog_read(out reflog_out, reference);
+                Ensure.ZeroResult(res);
+
+                return reflog_out;
+            }
+        }
+
+        public static int git_reflog_entrycount(ReflogSafeHandle reflog)
+        {
+            return (int)NativeMethods.git_reflog_entrycount(reflog);
+        }
+
+        public static ReflogEntrySafeHandle git_reflog_entry_byindex(ReflogSafeHandle reflog, int idx)
+        {
+            return NativeMethods.git_reflog_entry_byindex(reflog, (UIntPtr)idx);
+        }
+
+        public static ObjectId git_reflog_entry_id_old(SafeHandle entry)
+        {
+            return NativeMethods.git_reflog_entry_id_old(entry).MarshalAsObjectId();
+        }
+
+        public static ObjectId git_reflog_entry_id_new(SafeHandle entry)
+        {
+            return NativeMethods.git_reflog_entry_id_new(entry).MarshalAsObjectId();
+        }
+
+        public static Signature git_reflog_entry_committer(SafeHandle entry)
+        {
+            return new Signature(NativeMethods.git_reflog_entry_committer(entry));
+        }
+
+        public static string git_reflog_entry_message(SafeHandle entry)
+        {
+            return NativeMethods.git_reflog_entry_message(entry);
+        }
+
+        public static void git_reflog_append(ReflogSafeHandle reflog, ObjectId commit_id, Signature committer, string message)
+        {
+            using (ThreadAffinity())
+            using (SignatureSafeHandle committerHandle = committer.BuildHandle())
+            {
+                var oid = commit_id.Oid;
+
+                int res = NativeMethods.git_reflog_append(reflog, ref oid, committerHandle, message);
+                Ensure.ZeroResult(res);
+
+                res = NativeMethods.git_reflog_write(reflog);
+                Ensure.ZeroResult(res);
+            }
+        }
+
+        #endregion
+
         #region git_refspec
 
-        public static string git_fetchspec_rtransform(GitFetchSpecHandle refSpecPtr, string name)
+        public static string git_refspec_rtransform(GitRefSpecHandle refSpecPtr, string name)
         {
             using (ThreadAffinity())
             {
@@ -1318,7 +1385,7 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        public static GitFetchSpecHandle git_remote_fetchspec(RemoteSafeHandle remote)
+        public static GitRefSpecHandle git_remote_fetchspec(RemoteSafeHandle remote)
         {
             return NativeMethods.git_remote_fetchspec(remote);
         }
@@ -1587,6 +1654,26 @@ namespace LibGit2Sharp.Core
             }
         }
 
+        public static void git_repository_open_ext(string path, RepositoryOpenFlags flags, string ceilingDirs)
+        {
+            using (ThreadAffinity())
+            {
+                int res;
+
+                using (var repo = new NullRepositorySafeHandle())
+                {
+                    res = NativeMethods.git_repository_open_ext(repo, path, flags, ceilingDirs);
+                }
+
+                if (res == (int)GitErrorCode.NotFound)
+                {
+                    throw new RepositoryNotFoundException(String.Format(CultureInfo.InvariantCulture, "Path '{0}' doesn't point at a valid Git repository or workdir.", path));
+                }
+
+                Ensure.ZeroResult(res);
+            }
+        }
+
         public static FilePath git_repository_path(RepositorySafeHandle repo)
         {
             return NativeMethods.git_repository_path(repo);
@@ -1841,6 +1928,109 @@ namespace LibGit2Sharp.Core
         public static ICollection<TResult> git_status_foreach<TResult>(RepositorySafeHandle repo, Func<IntPtr, uint, TResult> resultSelector)
         {
             return git_foreach(resultSelector, c => NativeMethods.git_status_foreach(repo, (x, y, p) => c(x, y, p), IntPtr.Zero));
+        }
+
+        #endregion
+
+        #region git_submodule_
+
+        /// <summary>
+        ///   Returns a handle to the corresponding submodule,
+        ///   or an invalid handle if a submodule is not found.
+        /// </summary>
+        public static SubmoduleSafeHandle git_submodule_lookup(RepositorySafeHandle repo, string name)
+        {
+            using (ThreadAffinity())
+            {
+                SubmoduleSafeHandle reference;
+                var res = NativeMethods.git_submodule_lookup(out reference, repo, name);
+
+                switch (res)
+                {
+                    case (int)GitErrorCode.NotFound:
+                    case (int)GitErrorCode.Exists:
+                    case (int)GitErrorCode.OrphanedHead:
+                        return null;
+
+                    default:
+                        Ensure.ZeroResult(res);
+                        return reference;
+                }
+            }
+        }
+
+        public static ICollection<TResult> git_submodule_foreach<TResult>(RepositorySafeHandle repo, Func<IntPtr, IntPtr, TResult> resultSelector)
+        {
+            return git_foreach(resultSelector, c => NativeMethods.git_submodule_foreach(repo, (x, y, p) => c(x, y, p), IntPtr.Zero));
+        }
+
+        public static void git_submodule_add_to_index(SubmoduleSafeHandle submodule, bool write_index)
+        {
+            using (ThreadAffinity())
+            {
+                var res = NativeMethods.git_submodule_add_to_index(submodule, write_index);
+                Ensure.ZeroResult(res);
+            }
+        }
+
+        public static void git_submodule_save(SubmoduleSafeHandle submodule)
+        {
+            using (ThreadAffinity())
+            {
+                var res = NativeMethods.git_submodule_save(submodule);
+                Ensure.ZeroResult(res);
+            }
+        }
+
+        public static string git_submodule_path(SubmoduleSafeHandle submodule)
+        {
+            return NativeMethods.git_submodule_path(submodule);
+        }
+
+        public static string git_submodule_url(SubmoduleSafeHandle submodule)
+        {
+            return NativeMethods.git_submodule_url(submodule);
+        }
+
+        public static ObjectId git_submodule_index_id(SubmoduleSafeHandle submodule)
+        {
+            return NativeMethods.git_submodule_index_id(submodule).MarshalAsObjectId();
+        }
+
+        public static ObjectId git_submodule_head_id(SubmoduleSafeHandle submodule)
+        {
+            return NativeMethods.git_submodule_head_id(submodule).MarshalAsObjectId();
+        }
+
+        public static ObjectId git_submodule_wd_id(SubmoduleSafeHandle submodule)
+        {
+            return NativeMethods.git_submodule_wd_id(submodule).MarshalAsObjectId();
+        }
+
+        public static SubmoduleIgnore git_submodule_ignore(SubmoduleSafeHandle submodule)
+        {
+            return NativeMethods.git_submodule_ignore(submodule);
+        }
+
+        public static SubmoduleUpdate git_submodule_update(SubmoduleSafeHandle submodule)
+        {
+            return NativeMethods.git_submodule_update(submodule);
+        }
+
+        public static bool git_submodule_fetch_recurse_submodules(SubmoduleSafeHandle submodule)
+        {
+            return NativeMethods.git_submodule_fetch_recurse_submodules(submodule);
+        }
+
+        public static SubmoduleStatus git_submodule_status(SubmoduleSafeHandle submodule)
+        {
+            using (ThreadAffinity())
+            {
+                SubmoduleStatus status;
+                var res = NativeMethods.git_submodule_status(out status, submodule);
+                Ensure.ZeroResult(res);
+                return status;
+            }
         }
 
         #endregion

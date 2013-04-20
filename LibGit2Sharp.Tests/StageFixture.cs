@@ -18,8 +18,8 @@ namespace LibGit2Sharp.Tests
         [InlineData("new_tracked_file.txt", FileStatus.Added, true, FileStatus.Added, true, 0)]
         public void CanStage(string relativePath, FileStatus currentStatus, bool doesCurrentlyExistInTheIndex, FileStatus expectedStatusOnceStaged, bool doesExistInTheIndexOnceStaged, int expectedIndexCountVariation)
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 int count = repo.Index.Count;
                 Assert.Equal(doesCurrentlyExistInTheIndex, (repo.Index[relativePath] != null));
@@ -36,8 +36,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanStageTheUpdationOfAStagedFile()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 int count = repo.Index.Count;
                 const string filename = "new_tracked_file.txt";
@@ -60,22 +60,54 @@ namespace LibGit2Sharp.Tests
         [Theory]
         [InlineData("1/I-do-not-exist.txt", FileStatus.Nonexistent)]
         [InlineData("deleted_staged_file.txt", FileStatus.Removed)]
-        public void StagingAnUnknownFileThrows(string relativePath, FileStatus status)
+        public void StagingAnUnknownFileThrowsIfExplicitPath(string relativePath, FileStatus status)
         {
             using (var repo = new Repository(StandardTestRepoPath))
             {
                 Assert.Null(repo.Index[relativePath]);
                 Assert.Equal(status, repo.Index.RetrieveStatus(relativePath));
 
-                Assert.Throws<LibGit2SharpException>(() => repo.Index.Stage(relativePath));
+                Assert.Throws<UnmatchedPathException>(() => repo.Index.Stage(relativePath, new ExplicitPathsOptions()));
+            }
+        }
+
+        [Theory]
+        [InlineData("1/I-do-not-exist.txt", FileStatus.Nonexistent)]
+        [InlineData("deleted_staged_file.txt", FileStatus.Removed)]
+        public void CanStageAnUnknownFileWithLaxUnmatchedExplicitPathsValidation(string relativePath, FileStatus status)
+        {
+            using (var repo = new Repository(StandardTestRepoPath))
+            {
+                Assert.Null(repo.Index[relativePath]);
+                Assert.Equal(status, repo.Index.RetrieveStatus(relativePath));
+
+                Assert.DoesNotThrow(() => repo.Index.Stage(relativePath));
+                Assert.DoesNotThrow(() => repo.Index.Stage(relativePath, new ExplicitPathsOptions { ShouldFailOnUnmatchedPath = false }));
+
+                Assert.Equal(status, repo.Index.RetrieveStatus(relativePath));
+            }
+        }
+
+        [Theory]
+        [InlineData("1/I-do-not-exist.txt", FileStatus.Nonexistent)]
+        [InlineData("deleted_staged_file.txt", FileStatus.Removed)]
+        public void StagingAnUnknownFileWithLaxExplicitPathsValidationDoesntThrow(string relativePath, FileStatus status)
+        {
+            using (var repo = new Repository(StandardTestRepoPath))
+            {
+                Assert.Null(repo.Index[relativePath]);
+                Assert.Equal(status, repo.Index.RetrieveStatus(relativePath));
+
+                repo.Index.Stage(relativePath);
+                repo.Index.Stage(relativePath, new ExplicitPathsOptions { ShouldFailOnUnmatchedPath = false });
             }
         }
 
         [Fact]
         public void CanStageTheRemovalOfAStagedFile()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 int count = repo.Index.Count;
                 const string filename = "new_tracked_file.txt";
@@ -97,8 +129,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanStageANewFileInAPersistentManner()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 const string filename = "unit_test.txt";
                 Assert.Equal(FileStatus.Nonexistent, repo.Index.RetrieveStatus(filename));
@@ -113,7 +145,7 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(FileStatus.Added, repo.Index.RetrieveStatus(filename));
             }
 
-            using (var repo = new Repository(path.RepositoryPath))
+            using (var repo = new Repository(path))
             {
                 const string filename = "unit_test.txt";
                 Assert.NotNull(repo.Index[filename]);
@@ -126,10 +158,10 @@ namespace LibGit2Sharp.Tests
         [InlineData(true)]
         public void CanStageANewFileWithAFullPath(bool ignorecase)
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            SetIgnoreCaseOrSkip(path.RepositoryPath, ignorecase);
+            string path = CloneStandardTestRepo();
+            SetIgnoreCaseOrSkip(path, ignorecase);
 
-            using (var repo = new Repository(path.RepositoryPath))
+            using (var repo = new Repository(path))
             {
                 int count = repo.Index.Count;
 
@@ -161,8 +193,8 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanStageANewFileWithARelativePathContainingNativeDirectorySeparatorCharacters()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 int count = repo.Index.Count;
 
@@ -185,8 +217,8 @@ namespace LibGit2Sharp.Tests
         public void StagingANewFileWithAFullPathWhichEscapesOutOfTheWorkingDirThrows()
         {
             SelfCleaningDirectory scd = BuildSelfCleaningDirectory();
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
-            using (var repo = new Repository(path.RepositoryPath))
+            string path = CloneStandardTestRepo();
+            using (var repo = new Repository(path))
             {
                 DirectoryInfo di = Directory.CreateDirectory(scd.DirectoryPath);
 
@@ -199,7 +231,7 @@ namespace LibGit2Sharp.Tests
         }
 
         [Fact]
-        public void StageFileWithBadParamsThrows()
+        public void StagingFileWithBadParamsThrows()
         {
             using (var repo = new Repository(StandardTestRepoPath))
             {
@@ -207,6 +239,57 @@ namespace LibGit2Sharp.Tests
                 Assert.Throws<ArgumentNullException>(() => repo.Index.Stage((string)null));
                 Assert.Throws<ArgumentException>(() => repo.Index.Stage(new string[] { }));
                 Assert.Throws<ArgumentException>(() => repo.Index.Stage(new string[] { null }));
+            }
+        }
+
+        /*
+         * $ git status -s
+         *  M 1/branch_file.txt
+         *  M README
+         *  M branch_file.txt
+         * D  deleted_staged_file.txt
+         *  D deleted_unstaged_file.txt
+         * M  modified_staged_file.txt
+         *  M modified_unstaged_file.txt
+         *  M new.txt
+         * A  new_tracked_file.txt
+         * ?? new_untracked_file.txt
+         * 
+         * By passing "*" to Stage, the following files will be added/removed/updated from the index:
+         * - deleted_unstaged_file.txt : removed
+         * - modified_unstaged_file.txt : updated
+         * - new_untracked_file.txt : added
+         */
+        [Theory]
+        [InlineData("*u*", 0)]
+        [InlineData("*", 0)]
+        [InlineData("1/*", 0)]
+        [InlineData("RE*", 0)]
+        [InlineData("d*", -1)]
+        [InlineData("*modified_unstaged*", 0)]
+        [InlineData("new_*file.txt", 1)]
+        public void CanStageWithPathspec(string relativePath, int expectedIndexCountVariation)
+        {
+            using (var repo = new Repository(CloneStandardTestRepo()))
+            {
+                int count = repo.Index.Count;
+
+                repo.Index.Stage(relativePath);
+
+                Assert.Equal(count + expectedIndexCountVariation, repo.Index.Count);
+            }
+        }
+
+        [Fact]
+        public void CanStageWithMultiplePathspecs()
+        {
+            using (var repo = new Repository(CloneStandardTestRepo()))
+            {
+                int count = repo.Index.Count;
+
+                repo.Index.Stage(new string[] { "*", "u*" });
+
+                Assert.Equal(count, repo.Index.Count);  // 1 added file, 1 deleted file, so same count
             }
         }
     }
